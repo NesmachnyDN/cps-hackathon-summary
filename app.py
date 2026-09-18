@@ -20,6 +20,8 @@ from urllib.error import HTTPError, URLError
 from urllib.parse import urlparse
 from urllib.request import ProxyHandler, Request, build_opener
 
+from tone_map import analyze_document_tone
+
 HOST = os.environ.get("APP_HOST", "127.0.0.1")
 PORT = int(os.environ.get("APP_PORT", "8000"))
 ROOT = Path(__file__).resolve().parent
@@ -1608,7 +1610,7 @@ class Handler(BaseHTTPRequestHandler):
             if path == "/api/preflight":
                 self._json(200, run_provider_preflight())
                 return
-            if path not in {"/api/file", "/api/detect", "/api/analyze", "/api/process", "/api/normative/question", "/api/normative/summary", "/api/normative/ingest"}:
+            if path not in {"/api/file", "/api/detect", "/api/analyze", "/api/process", "/api/normative/question", "/api/normative/summary", "/api/normative/ingest", "/api/normative/tone-map"}:
                 self._json(404, {"error": "not_found"})
                 return
             length = int(self.headers.get("Content-Length", "0"))
@@ -1629,6 +1631,8 @@ class Handler(BaseHTTPRequestHandler):
                 self._json(200, summarize_document(payload))
             elif path == "/api/normative/ingest":
                 self._json(200, ingest_normative_document(payload))
+            elif path == "/api/normative/tone-map":
+                self._json(200, analyze_document_tone(payload))
             else:
                 result = process_payload(payload)
                 _PROVIDER_READINESS.update(state="PASS", message="Live-вызов провайдера: PASS. Реальный ответ получен.")

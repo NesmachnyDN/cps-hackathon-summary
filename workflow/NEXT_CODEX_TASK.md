@@ -1,45 +1,47 @@
 # Next Execution Task
 
-TASK_ID: DEMO-ANONYMIZATION-SETTINGS
+TASK_ID: DEMO-DOCUMENT-TONE-MAP
 MODE: REVIEW
 BASE_BRANCH: main
-TARGET_BRANCH: feature/anonymization-settings-ui
+TARGET_BRANCH: feature/document-tone-map
 EXECUTION_PATH: DIRECT
 
 ## Result
-A jury-facing anonymization settings surface is implemented on an isolated feature branch. It reuses the real local protection engine rather than a visual mock.
+A separate HR-facing document tone/clarity map is implemented without changing the main Q&A, summary, ingestion or anonymization flows.
 
 ## Acceptance status
-1. Separate «Защита данных» tab exposes per-category policy controls — PASS.
-2. ORG/SYSTEM/PROJECT/PERSON/internal IDs can be pseudonymized or explicitly allowed; email/phone can be masked or explicitly allowed — PASS.
-3. Credentials/private keys remain an immutable BLOCK boundary — PASS.
-4. Local preview visibly compares original data, exact safe outbound text and reverse-restored text without invoking an external LLM — PASS.
-5. Preview lists detected sensitive values and the action applied to each — PASS.
-6. The selected policy is sent with protected normative questions and document summaries, so the settings affect the real user-facing external-call paths — PASS.
-7. Existing protected-mode trace, normative Q&A, summaries and knowledge-base ingestion remain intact — PASS.
+1. Separate «Карта тона документа» tab — PASS.
+2. User can select an existing knowledge-base document — PASS.
+3. User can upload a supported file for one-off analysis — PASS.
+4. Analysis is local and does not invoke an external LLM — PASS.
+5. Per-fragment complexity and communication-tone scores are calculated — PASS.
+6. Clickable heat-map visualization highlights difficult/directive areas — PASS.
+7. HR receives reasons and concrete editing guidance for each fragment — PASS.
+8. Problem-only filtering and document-level recommendations are available — PASS.
+9. Existing application behavior remains intact — PASS.
 
 ## Context pack
 - AGENTS.md
 - workflow/STATE.md
 - workflow/NEXT_CODEX_TASK.md
-- docs/QUALITY.md security/UI sections
-- app.py protection-policy functions and normative LLM trace path
+- app.py HTTP routing
+- tone_map.py
 - static/index.html
 - tests/test_app.py
 
 ## Required checks
-- .venv/bin/python -m py_compile app.py
+- .venv/bin/python -m py_compile app.py tone_map.py
 - .venv/bin/python -m unittest tests/test_app.py
 - node --check on extracted inline UI script
 - git diff --check
-- isolated HTTP smoke for /api/analyze verifying custom policy, safe outbound and exact local restore
+- HTTP smoke for /api/normative/tone-map
+- real organizer-corpus smoke across all 5 documents
 
 ## Verification
-- .venv/bin/python -m py_compile app.py — PASS.
-- .venv/bin/python -m unittest tests/test_app.py — 55 tests PASS.
-- node --check on extracted inline UI script — PASS.
+- Python compile — PASS.
+- unittest — 59 tests PASS.
+- inline UI script node --check — PASS.
 - git diff --check — PASS.
-- isolated HTTP smoke on port 8012 — PASS.
-- preview smoke: custom ORG=ALLOW leaves organization visible, SYSTEM is pseudonymized, EMAIL is masked, reverse restore equals original — PASS.
-- real normative-question trace with the same custom policy reflects the selected actions before provider dispatch — PASS (provider intentionally unavailable in isolated smoke).
-- credential external-processing attempt returns HTTP 403 — PASS.
+- isolated HTTP smoke on port 8015 — PASS.
+- organizer corpus: all 5 documents analyzed locally — PASS.
+- real corpus produces non-trivial heat-map distribution with high-complexity fragments reaching 77–84/100 — PASS.

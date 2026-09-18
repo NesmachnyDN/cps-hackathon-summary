@@ -17,6 +17,7 @@ from app import (
     active_detector_config,
     active_provider_config,
     analyze_payload,
+    analyze_document_tone,
     apply_policy,
     build_chat_request,
     call_provider,
@@ -798,6 +799,47 @@ class DemoHardeningTests(unittest.TestCase):
         self.assertIn("/api/normative/ingest", html)
         demo_select = html.split('<select id="demoQuestion">', 1)[1].split("</select>", 1)[0]
         self.assertEqual(demo_select.count("<option"), 8)
+
+
+class ToneMapTests(unittest.TestCase):
+    def test_complex_directive_fragment_scores_worse_than_plain_fragment(self):
+        plain = (
+            "Сотрудник подаёт заявление руководителю. "
+            "Руководитель отвечает в течение трёх рабочих дней."
+        )
+        complex_fragment = (
+            "В соответствии с настоящим положением работник обязан в установленном "
+            "порядке осуществлять предоставление вышеуказанных сведений посредством "
+            "корпоративной системы; при этом не допускается направление информации "
+            "иным способом, а также необходимо обеспечить предварительное согласование."
+        )
+        result = analyze_document_tone({"text": plain + "\n\n" + complex_fragment})
+        self.assertEqual(result["summary"]["fragmentCount"], 2)
+        first, second = result["fragments"]
+        self.assertGreater(second["complexity"], first["complexity"])
+        self.assertTrue(second["rewriteRecommended"])
+        self.assertIn(second["tone"], {"Директивный", "Жёсткий"})
+        self.assertTrue(result["recommendations"])
+
+    def test_tone_map_rejects_empty_document(self):
+        with self.assertRaisesRegex(ValueError, "must not be empty"):
+            analyze_document_tone({"text": "  "})
+
+    def test_supportive_fragment_keeps_consistent_overall_tone(self):
+        result = analyze_document_tone(
+            {"text": "Сотрудник может обратиться за помощью к наставнику при необходимости."}
+        )
+        self.assertEqual(result["fragments"][0]["tone"], "Поддерживающий")
+        self.assertEqual(result["summary"]["tone"], "Поддерживающий")
+
+    def test_tone_map_ui_is_isolated_in_own_tab(self):
+        html = Path("static/index.html").read_text(encoding="utf-8")
+        self.assertIn('data-panel="tone"', html)
+        self.assertIn('id="toneCorpusSelect"', html)
+        self.assertIn('id="toneFile"', html)
+        self.assertIn('id="complexityStrip"', html)
+        self.assertIn('id="toneStrip"', html)
+        self.assertIn("/api/normative/tone-map", html)
 
 
 if __name__ == "__main__":
