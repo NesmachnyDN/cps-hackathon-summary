@@ -1,0 +1,2 @@
+Подготовь план действий по инциденту INC-78421 для компании Альтаир Энерго.
+Тестовый credential для демонстрации Policy Engine: password=DEMO_ONLY_CREDENTIAL_2026
