@@ -19,6 +19,23 @@ if [[ -z "${GROQ_API_KEY:-}" ]]; then
   echo
 fi
 
+existing_pid="$(lsof -tiTCP:"$APP_PORT" -sTCP:LISTEN 2>/dev/null | head -n 1 || true)"
+if [[ -n "$existing_pid" ]]; then
+  existing_cwd="$(readlink -f "/proc/$existing_pid/cwd" 2>/dev/null || true)"
+  existing_cmd="$(tr '\0' ' ' < "/proc/$existing_pid/cmdline" 2>/dev/null || true)"
+  if [[ "$existing_cwd" == "$PWD" && "$existing_cmd" == *".venv/bin/python app.py"* ]]; then
+    echo "Stopping previous app instance on port $APP_PORT (PID $existing_pid)"
+    kill "$existing_pid"
+    for _ in {1..30}; do
+      kill -0 "$existing_pid" 2>/dev/null || break
+      sleep 0.1
+    done
+  else
+    echo "Port $APP_PORT is occupied by another process; refusing to stop it." >&2
+    exit 1
+  fi
+fi
+
 echo "Starting with Groq via proxy: $GROQ_PROXY_URL"
 echo "Open: http://127.0.0.1:$APP_PORT"
 exec .venv/bin/python app.py
