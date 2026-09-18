@@ -1086,7 +1086,11 @@ def answer_normative_question(payload: dict[str, object]) -> dict[str, object]:
     results = found["results"]
     strong = is_strong(results)
     expanded = None
-    if not strong:
+    # Expansion is allowed only when the question already identifies a governed
+    # role/document. For an unanchored situational question a loose synonym must
+    # not turn an incidental word into a normative answer.
+    can_expand = bool(results and int(results[0].get("metadataMatches", 0)) >= 1)
+    if not strong and can_expand:
         expanded = _optional_llm(question, prompts["expansion_system"])
         if expanded:
             found = retrieve_clauses(question + " " + expanded)
@@ -1109,7 +1113,8 @@ def answer_normative_question(payload: dict[str, object]) -> dict[str, object]:
         "Вопрос сотрудника: " + question
         + "\n\nНормативные фрагменты:\n" + evidence
         + "\n\nПроверка конфликта и приоритета: " + str(priority_context)
-        + "\n\nОтветь максимум тремя короткими предложениями. Начни с «Да», «Нет» или «Зависит». "
+        + "\n\nОтветь максимум тремя короткими предложениями. Если вопрос предполагает ответ да/нет, "
+          "начни с «Да», «Нет» или «Зависит». В остальных случаях сразу дай прямой ответ. "
           "Объясни решение простым языком и не добавляй фактов вне приведённых фрагментов.",
         prompts["query_system"],
     )
@@ -1229,11 +1234,24 @@ def summarize_document(payload: dict[str, object]) -> dict[str, object]:
     new_lines = set(_clauses({"text": text}))
     current["changes_vs_previous"] = {"added": sorted(new_lines - old_lines), "removed": sorted(old_lines - new_lines), "available": bool(previous_text)}
     prompts = load_prompts()
+    if matched:
+        context_parts = [
+            "Название: " + str(meta.get("title") or ""),
+            "Аудитория: " + "; ".join(str(x) for x in current.get("audience", [])),
+            "Требования и обязанности:\n" + "\n".join(str(x) for x in current.get("requirements", [])),
+            "Запреты:\n" + "\n".join(str(x) for x in current.get("prohibitions", [])),
+            "Права:\n" + "\n".join(str(x) for x in current.get("rights", [])),
+        ]
+        llm_source = "\n\n".join(context_parts)
+    else:
+        # Bound arbitrary uploads so one unusually large document cannot make
+        # the hackathon demo dependent on provider context/latency limits.
+        llm_source = text[:12000]
     llm = _optional_llm(
-        "Документ:\n" + text + "\n\nВерни JSON с ключами topic, audience, requirements, prohibitions, rights. "
+        "Документ:\n" + llm_source + "\n\nВерни JSON с ключами topic, audience, requirements, prohibitions, rights. "
         "Значения audience, requirements, prohibitions и rights должны быть массивами коротких строк.",
         prompts["summary_system"],
-        max_tokens=1200,
+        max_tokens=900,
     )
     ai_fields = _parse_summary_llm(llm)
     if ai_fields:
@@ -1253,7 +1271,7 @@ def summarize_document(payload: dict[str, object]) -> dict[str, object]:
         "summary": current,
         "narrative": llm,
         "source": source,
-        "mode": "llm_grounded" if ai_fields else "offline_fallback",
+        "mode": "llm_grounded" if ai_fields else "structured_grounded",
     }
 
 

@@ -12,6 +12,6 @@ The system does not invent version relationships: no previous revisions were sup
 Retrieval is role/department-aware to avoid mixing highly similar HR instructions. Groq GPT-OSS 120B is used only after source retrieval, through the local VPN proxy, and is instructed to answer from retrieved clauses only. Unsupported questions return an explicit no-regulation response.
 
 ## Verification
-45 unit tests pass. Legacy DOC extraction passes. Live Groq Q&A on the official corpus passes: ДИ-11-992 yields one year of experience for the leading specialist; ДИ-11-993 yields five years for the chief specialist.
+46 unit tests pass. Legacy DOC extraction passes. Live Groq Q&A on the official corpus passes: ДИ-11-992 yields one year of experience for the leading specialist; ДИ-11-993 yields five years for the chief specialist. Unsupported unanchored questions are prevented from becoming answers through loose LLM query expansion.
 
 Official documents and the generated local corpus are excluded from Git. Only integration code, tests, documentation and launch tooling are committed.

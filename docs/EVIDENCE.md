@@ -3,7 +3,7 @@
 Date: 2026-09-18
 
 ## Automated
-- `.venv/bin/python -m unittest discover -s tests -p 'test_*.py'` — PASS, 45 tests.
+- `.venv/bin/python -m unittest discover -s tests -p 'test_*.py'` — PASS, 46 tests.
 - `.venv/bin/python -m py_compile app.py scripts/prepare_official_documents.py` — PASS.
 - `git diff --check` — PASS.
 
@@ -20,6 +20,7 @@ Date: 2026-09-18
 - Chief specialist query — `llm_grounded`, source ДИ-11-993, required experience = 5 years.
 - Weekend business-trip payment query — no grounded evidence; honest HR fallback.
 - Original organizer `.doc` upload — PASS.
-- Structured summary for ДИ-11-992 — correct topic/audience; previous version explicitly unavailable.
+- Original ДИ-11-992 `.doc` upload auto-binds to the official corpus — PASS.
+- Structured summary for ДИ-11-992 — correct source/topic/audience, 5 requirements, 5 rights, 1 prohibition; previous version explicitly unavailable.
 
-Final post-change Groq summary smoke requires one launcher restart because the running process retains the previously entered API key.
+Final code-level smoke after the safety hardening passes: role-specific retrieval selects ДИ-11-992/993/948 correctly, unsupported weekend-trip payment returns `not_regulated`, and structured summary remains source-bound. A single launcher restart is required to load the last backend hardening into the live Groq process because the API key exists only in that process environment.

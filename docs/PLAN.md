@@ -11,6 +11,7 @@ STATUS: OFFICIAL_CORPUS_INTEGRATED
 7. Route Groq through local VPN proxy and tune GPT-OSS reasoning budget — DONE.
 8. Integrate organizer document package — DONE.
 9. Unit + local runtime acceptance on organizer package — DONE.
-10. Final live Groq summary smoke after launcher restart — PENDING_RUNTIME_RESTART.
+10. Safety hardening for unsupported questions + bounded summary AI context — DONE.
+11. Final live Groq smoke on the last backend revision — PENDING_RUNTIME_RESTART.
 
 Official documents remain local-only under `official_documents_inbox/` and are excluded from Git.

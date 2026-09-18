@@ -585,6 +585,23 @@ class NormativeMvpTests(unittest.TestCase):
         self.assertIn("не урегулировано", result["answer"])
         self.assertIn("HR", result["answer"])
 
+    def test_unanchored_incidental_match_does_not_trigger_llm_expansion(self):
+        corpus = [{
+            "document_id": "role",
+            "title": "Должностная инструкция",
+            "version": "2025",
+            "status": "current",
+            "clauses": ["На период командировки обязанности исполняет замещающее лицо."],
+            "text": "На период командировки обязанности исполняет замещающее лицо.",
+        }]
+        with patch("app.load_corpus", return_value=corpus), patch("app._optional_llm") as llm:
+            result = answer_normative_question({
+                "question": "Как оплачивается командировка в субботу и воскресенье?"
+            })
+        self.assertEqual(result["mode"], "not_regulated")
+        self.assertEqual(result["evidence"], [])
+        llm.assert_not_called()
+
     def test_summary_contains_fields_and_version_diff(self):
         result = summarize_document({
             "text": "Положение\nРаботник обязан согласовать отпуск.\nРаботник вправе выбрать дату.",

@@ -19,6 +19,7 @@ MVP:
 - structured summary: PASS
 - direct legacy DOC upload: PASS
 - Groq via local VPN proxy: PASS
-- final post-change summary AI smoke: PENDING_RESTART
+- final code-level safety smoke: PASS
+- final live Groq smoke on last backend revision: PENDING_RESTART
 
-NEXT_ACTION: restart via scripts/run_groq_proxy.sh, run final two-scenario smoke, then freeze demo build.
+NEXT_ACTION: restart once via scripts/run_groq_proxy.sh to load the last backend hardening, run the two demo scenarios, then freeze demo build.
