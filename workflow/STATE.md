@@ -1,9 +1,9 @@
 # Workflow State
 
-STATUS: DOCUMENT_TONE_MAP_READY
+STATUS: DOCUMENT_TONE_MAP_MERGED
 CURRENT_TASK_ID: DEMO-DOCUMENT-TONE-MAP
 CURRENT_MODE: REVIEW
-TARGET_BRANCH: feature/document-tone-map
+TARGET_BRANCH: main
 APPROVED_BRANCH: main
 PRIMARY_REPOSITORY: NesmachnyDN/cps-hackathon-summary
 EXECUTION_MODE: LOCAL_ORCHESTRATED
@@ -18,7 +18,7 @@ MVP:
 - configurable anonymization policy UI: PASS
 - UI knowledge-base ingestion: PASS
 - 7 prepared demo questions: PASS
-- document clarity/tone map: PASS on isolated branch
+- document clarity/tone map: PASS on main
 - existing main flows regression suite: PASS
 
-NEXT_ACTION: keep the document tone-map slice isolated on feature/document-tone-map; merge into main only on explicit user instruction.
+NEXT_ACTION: main contains all completed demo slices; continue only with explicit next demo task or bounded fixes.
