@@ -1,42 +1,109 @@
 <!doctype html>
 <html lang="ru">
 <head>
-  <meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width,initial-scale=1">
   <title>Нормативный помощник</title>
   <style>
-    :root{--ink:#172033;--muted:#667085;--line:#dce3ed;--blue:#155eef;--pale:#eff6ff;--warn:#fff4e5;--danger:#b42318}
-    *{box-sizing:border-box} body{margin:0;background:#f7f9fc;color:var(--ink);font:16px/1.45 system-ui,-apple-system,"Segoe UI",sans-serif}
-    main{max-width:1000px;margin:auto;padding:38px 22px 70px} h1{margin:0;font-size:30px} .lead{color:var(--muted);margin:8px 0 25px}
-    .tabs{display:flex;gap:8px;border-bottom:1px solid var(--line);margin-bottom:22px}.tab,button{border:0;border-radius:8px;padding:11px 15px;font:inherit;font-weight:650;cursor:pointer}.tab{background:transparent;border-radius:8px 8px 0 0;color:var(--muted)}.tab.active{color:var(--blue);box-shadow:inset 0 -3px var(--blue)}
-    section{display:none}.active-panel{display:block}.card{background:#fff;border:1px solid var(--line);border-radius:12px;padding:20px;margin:14px 0}label{font-weight:650;display:block;margin-bottom:7px}textarea,input[type=file]{width:100%;font:inherit}textarea{border:1px solid #b8c4d4;border-radius:8px;padding:12px;min-height:105px;resize:vertical}.row{display:flex;gap:10px;flex-wrap:wrap;margin-top:12px}button{background:var(--blue);color:#fff}button.secondary{color:var(--blue);background:#eaf1ff}.mode{display:inline-block;border-radius:20px;background:var(--pale);color:#1849a9;padding:4px 10px;font-size:13px;font-weight:650}.conflict{display:none;background:var(--warn);border-left:4px solid #f79009;padding:13px;margin:15px 0}.quote{border-left:3px solid #84adff;padding:11px 14px;margin:10px 0;background:#fbfcfe}.meta{font-size:13px;color:var(--muted);margin-bottom:5px}.result{white-space:pre-wrap}.list h3{font-size:15px;margin:18px 0 5px}.list ul{margin:4px 0;padding-left:20px}.download{margin-top:18px}details{margin-top:24px;color:var(--muted)}details div{padding:10px 2px}.error{color:var(--danger);margin-top:10px}
+    :root{--ink:#172033;--muted:#667085;--line:#dce3ed;--blue:#155eef;--pale:#eff6ff;--warn:#fff4e5;--danger:#b42318;--ok:#067647}
+    *{box-sizing:border-box}body{margin:0;background:#f7f9fc;color:var(--ink);font:16px/1.48 system-ui,-apple-system,"Segoe UI",sans-serif}
+    main{max-width:1080px;margin:auto;padding:34px 22px 70px}h1{margin:0;font-size:32px}.lead{color:var(--muted);margin:7px 0 22px}
+    .tabs{display:flex;gap:8px;border-bottom:1px solid var(--line);margin-bottom:20px}.tab,button{border:0;border-radius:8px;padding:11px 15px;font:inherit;font-weight:650;cursor:pointer}
+    .tab{background:transparent;border-radius:8px 8px 0 0;color:var(--muted)}.tab.active{color:var(--blue);box-shadow:inset 0 -3px var(--blue)}
+    section{display:none}.active-panel{display:block}.card{background:#fff;border:1px solid var(--line);border-radius:12px;padding:20px;margin:14px 0}
+    label{font-weight:650;display:block;margin-bottom:7px}textarea,input[type=file],input[type=text],select{width:100%;font:inherit;border:1px solid #b8c4d4;border-radius:8px;padding:10px;background:#fff}
+    textarea{min-height:112px;resize:vertical}.row{display:flex;gap:10px;flex-wrap:wrap;align-items:center;margin-top:12px}.row>*{min-width:0}
+    button{background:var(--blue);color:#fff}button.secondary{color:var(--blue);background:#eaf1ff}.mode{display:inline-block;border-radius:20px;background:var(--pale);color:#1849a9;padding:4px 10px;font-size:13px;font-weight:650}
+    .conflict{display:none;background:var(--warn);border-left:4px solid #f79009;padding:13px;margin:15px 0}.quote{border-left:3px solid #84adff;padding:11px 14px;margin:10px 0;background:#fbfcfe}
+    .meta{font-size:13px;color:var(--muted);margin-bottom:5px}.result{white-space:pre-wrap}.list h3{font-size:15px;margin:18px 0 5px}.list ul{margin:4px 0;padding-left:20px}
+    .download{margin-top:18px}.error{color:var(--danger);margin-top:10px}.ok{color:var(--ok);margin-top:10px}.toggle{display:flex;gap:9px;align-items:flex-start;margin-top:12px;color:#344054}.toggle input{margin-top:4px}
+    details{margin-top:18px;color:var(--muted)}details>div{padding:10px 2px}.trace-call{border:1px solid var(--line);border-radius:10px;padding:14px;margin:12px 0;background:#fcfdff}
+    pre{white-space:pre-wrap;word-break:break-word;background:#f3f5f8;border-radius:8px;padding:10px;max-height:260px;overflow:auto;font-size:12px;color:#344054}.trace-title{font-weight:700;color:var(--ink)}
+    .statusbar{display:flex;gap:8px;flex-wrap:wrap;margin:0 0 14px}.pill{font-size:13px;background:#fff;border:1px solid var(--line);border-radius:999px;padding:4px 9px;color:var(--muted)}
   </style>
-</head>
-<body><main>
+</head><body><main>
   <h1>Нормативный помощник</h1>
-  <p class="lead">Понятный ответ по документам задания — с дословной цитатой, редакцией и проверкой конфликтов норм.</p>
-  <nav class="tabs" aria-label="Режим работы"><button class="tab active" data-panel="question">Спросить по ситуации</button><button class="tab" data-panel="summary">Выжимка документа</button></nav>
-
+  <p class="lead">Ответы по документам задания с дословными источниками, контролем передачи во внешний AI и локальной базой знаний.</p>
+  <div class="statusbar"><span class="pill" id="corpusCount">Загрузка базы…</span><span class="pill">Groq через локальный proxy</span><span class="pill">Документы хранятся локально</span></div>
+  <nav class="tabs" aria-label="Режим работы">
+    <button class="tab active" data-panel="question">Спросить по ситуации</button>
+    <button class="tab" data-panel="summary">Выжимка и база знаний</button>
+  </nav>
   <section id="question" class="active-panel">
-    <div class="card"><label for="questionText">Опишите ситуацию</label><textarea id="questionText" placeholder="Например: какой стаж нужен ведущему специалисту?"></textarea><div class="row"><button id="ask">Получить ответ</button><button class="secondary" id="demo">Показать пример по документам</button></div></div>
-    <div id="questionResult" hidden class="card"><span id="questionMode" class="mode"></span><div id="conflict" class="conflict"></div><h2>Ответ</h2><div id="answer" class="result"></div><h2>Источники</h2><div id="quotes"></div></div>
+    <div class="card">
+      <label for="demoQuestion">Готовый сценарий демо</label>
+      <select id="demoQuestion">
+        <option value="">— выберите один из 7 вопросов —</option>
+        <option>Какой стаж работы требуется для ведущего специалиста отдела подбора и адаптации персонала?</option>
+        <option>Какой стаж работы требуется для главного специалиста отдела подбора и адаптации персонала?</option>
+        <option>Что делает руководитель направления отдела подбора и адаптации персонала?</option>
+        <option>Кому подчиняется начальник отдела подбора и адаптации персонала?</option>
+        <option>Что делает руководитель направления отдела по развитию бренда и коммуникаций?</option>
+        <option>Компания СеверГаз, система ДокФлоу-X, проект Миграция-42. Мой email demo.user@example.org. Какой стаж работы требуется ведущему специалисту отдела подбора и адаптации персонала?</option>
+        <option>Как получить корпоративное парковочное место рядом с офисом?</option>
+      </select>
+      <label for="questionText" style="margin-top:14px">Ситуация или вопрос</label>
+      <textarea id="questionText" placeholder="Введите вопрос или выберите сценарий выше"></textarea>
+      <label class="toggle"><input id="protectedMode" type="checkbox" checked><span><b>Защищённый режим</b> — чувствительные значения преобразуются до внешней LLM, а ответ восстанавливается локально.</span></label>
+      <div class="row"><button id="ask">Получить ответ</button><button class="secondary" id="loadDemo">Подставить выбранный вопрос</button></div>
+    </div>    <div id="questionResult" hidden class="card">
+      <span id="questionMode" class="mode"></span>
+      <div id="conflict" class="conflict"></div>
+      <h2>Ответ</h2><div id="answer" class="result"></div>
+      <h2>Источники</h2><div id="quotes"></div>
+      <details id="traceDetails"><summary>Что именно ушло во внешний AI</summary><div id="trace"></div></details>
+    </div>
   </section>
-
   <section id="summary">
-    <div class="card"><label for="corpusSelect">Выберите документ из пакета задания</label><select id="corpusSelect"><option value="">— выберите или загрузите файл ниже —</option></select><label for="file">Загрузите документ</label><input id="file" type="file" accept=".txt,.md,.csv,.json,.doc,.docx,.pdf"><p class="lead">Поддерживаются TXT, MD, CSV, JSON, DOC, DOCX и PDF. Файл обрабатывается локально и не сохраняется.</p><button id="summarize">Сделать выжимку</button><div id="summaryError" class="error"></div></div>
-    <div id="summaryResult" hidden class="card"><span id="summaryMode" class="mode"></span><div id="summarySource" class="meta"></div><div id="summaryFields" class="list"></div><button id="download" class="download">Скачать выжимку</button></div>
-  </section>
-
-  <details><summary>Конфиденциальность и контроль доступа</summary><div>Перед обращением к AI чувствительные значения могут псевдонимизироваться; доступ к исходным документам должен ограничиваться ролями. На основном экране не выводятся технические журналы или содержимое запросов.</div></details>
+    <div class="card">
+      <label for="corpusSelect">Документ из базы знаний</label>
+      <select id="corpusSelect"><option value="">— выберите документ —</option></select>
+      <label for="file" style="margin-top:14px">Или загрузите документ только для разовой выжимки</label>
+      <input id="file" type="file" accept=".txt,.md,.csv,.json,.doc,.docx,.pdf">
+      <p class="lead">Разовая загрузка не добавляет файл в базу знаний.</p>
+      <button id="summarize">Сделать выжимку</button><div id="summaryError" class="error"></div>
+    </div>
+    <div id="summaryResult" hidden class="card">
+      <span id="summaryMode" class="mode"></span>
+      <div id="summarySource" class="meta"></div>
+      <div id="summaryFields" class="list"></div>
+      <button id="download" class="download">Скачать выжимку</button>
+    </div>
+    <div class="card">
+      <h2>Добавить документ в базу знаний</h2>
+      <p class="lead">Файл сохраняется в локальной папке нормативных документов, исключённой из Git, и становится доступен для вопросов без перезапуска.</p>
+      <label for="kbFile">Нормативный документ</label>
+      <input id="kbFile" type="file" accept=".txt,.md,.csv,.json,.doc,.docx,.pdf">
+      <label for="kbTitle" style="margin-top:12px">Название (необязательно)</label>
+      <input id="kbTitle" type="text" placeholder="Если пусто — используется имя файла">
+      <div class="row"><button id="kbIngest">Добавить в базу знаний</button></div>
+      <div id="kbStatus"></div>
+    </div>
+  </section>  <details><summary>Конфиденциальность и контроль доступа</summary>
+    <div>Защищённый режим включён по умолчанию. Trace показывает исходный prompt, действия политик, точное тело запроса наружу, сырой ответ модели и локально восстановленный ответ. API-ключ в интерфейс не возвращается.</div>
+  </details>
 </main>
 <script>
-const $=id=>document.getElementById(id), mode=m=>m==='llm_grounded'?'AI с опорой на источники':m==='not_regulated'?'В документах не найдено основание':m==='structured_grounded'?'Структурировано по документу':'Офлайн-резерв: детерминированный ответ';
+const $=id=>document.getElementById(id);
+const mode=m=>m==='llm_grounded'?'AI с опорой на источники':m==='structured_grounded'?'Структурированная выжимка':m==='not_regulated'?'В документах не найдено основание':'Офлайн-резерв';
 document.querySelectorAll('.tab').forEach(b=>b.onclick=()=>{document.querySelectorAll('.tab').forEach(x=>x.classList.remove('active'));document.querySelectorAll('section').forEach(x=>x.classList.remove('active-panel'));b.classList.add('active');$(b.dataset.panel).classList.add('active-panel')});
 async function api(path,payload){const r=await fetch(path,{method:payload?'POST':'GET',headers:payload?{'Content-Type':'application/json'}:{},body:payload?JSON.stringify(payload):undefined});const d=await r.json();if(!r.ok)throw Error(d.message||'Не удалось обработать запрос');return d}
-function showQuestion(d){$('questionResult').hidden=false;$('questionMode').textContent=d.evidence?.length?mode(d.mode):'В документах не найдено основание';$('answer').textContent=d.answer;const c=d.conflicts||{};$('conflict').style.display=c.detected?'block':'none';$('conflict').textContent=c.detected?'Обнаружено противоречие. '+c.priorityMessage:'';$('quotes').replaceChildren(...d.evidence.map(x=>{let e=document.createElement('article');e.className='quote';let m=document.createElement('div');m.className='meta';m.textContent=x.document+' · редакция '+x.version+(x.section?' · раздел «'+x.section+'»':'')+(x.effectiveDate?' · действует с '+x.effectiveDate:'');let q=document.createElement('div');q.textContent=x.quote;e.append(m,q);return e}))}
-$('ask').onclick=async()=>{try{showQuestion(await api('/api/normative/question',{question:$('questionText').value}))}catch(e){alert(e.message)}};
-$('demo').onclick=()=>{$('questionText').value='Какой стаж работы требуется для ведущего специалиста отдела подбора и адаптации персонала?';$('ask').click()};
-let exportText='',corpus=[];function group(title,values){return `<h3>${title}</h3><ul>${(values&&values.length?values:['Не указано']).map(x=>`<li>${String(x).replaceAll('&','&amp;').replaceAll('<','&lt;')}</li>`).join('')}</ul>`}function toBase64(bytes){let binary='';for(let i=0;i<bytes.length;i+=8192)binary+=String.fromCharCode(...bytes.subarray(i,i+8192));return btoa(binary)}
-$('summarize').onclick=async()=>{const f=$('file').files[0], selected=$('corpusSelect').value;$('summaryError').textContent='';if(!f&&!selected){$('summaryError').textContent='Выберите документ из корпуса или загрузите файл.';return}try{let text,metadata;if(selected){const item=corpus[+selected];text=item.text;metadata=item}else{const b=await f.arrayBuffer(),base64=toBase64(new Uint8Array(b));const uploaded=await api('/api/file',{name:f.name,contentBase64:base64});text=uploaded.text;metadata={document_id:f.name}}const d=await api('/api/normative/summary',{text,metadata});const s=d.summary;$('summaryResult').hidden=false;$('summaryMode').textContent=mode(d.mode);$('summarySource').textContent=d.source?.title?(d.source.title+' · редакция '+(d.source.version||'не указана')):'';$('summaryFields').innerHTML=group('Тема',[s.topic])+group('Аудитория',s.audience)+group('Требования',s.requirements)+group('Запреты',s.prohibitions)+group('Права',s.rights)+group('Изменения',s.changes_vs_previous.available?[`Добавлено: ${s.changes_vs_previous.added.join('; ')||'нет'}`,`Удалено: ${s.changes_vs_previous.removed.join('; ')||'нет'}`]:['Предыдущая версия не найдена']);exportText=$('summaryFields').innerText}catch(e){$('summaryError').textContent=e.message}};
+function pretty(v){return typeof v==='string'?v:JSON.stringify(v,null,2)}
+function traceBlock(label,value){const wrap=document.createElement('div');const title=document.createElement('div');title.className='meta';title.textContent=label;const pre=document.createElement('pre');pre.textContent=value===null||value===undefined?'—':pretty(value);wrap.append(title,pre);return wrap}
+function renderTrace(security){const root=$('trace');root.replaceChildren();const calls=security?.calls||[];if(!calls.length){root.textContent='Внешняя LLM для этого ответа не вызывалась.';return}calls.forEach(call=>{const card=document.createElement('div');card.className='trace-call';const head=document.createElement('div');head.className='trace-title';head.textContent=(call.stage||'LLM')+' · '+(call.status||'');const info=document.createElement('div');info.className='meta';info.textContent=call.protectedMode?'Защищённый режим: включён':'Защищённый режим: выключен';card.append(head,info,traceBlock('Провайдер и маршрут',call.provider||{}),traceBlock('Исходный внутренний prompt',call.originalPrompt||''),traceBlock('Действия политики и mapping', {policy:call.policy||{},entities:call.entities||[]}),traceBlock('Prompt после преобразования',call.outboundPrompt||'Не отправлялся'),traceBlock('Фактический JSON запроса во внешний LLM',call.providerRequest||{}),traceBlock('Сырой ответ внешней модели',call.providerResponse||'Нет ответа'),traceBlock('Ответ после обратного преобразования',call.restoredResponse||'Нет ответа'));root.append(card)})}
+function showQuestion(d){$('questionResult').hidden=false;$('questionMode').textContent=d.evidence?.length?mode(d.mode):'В документах не найдено основание';$('answer').textContent=d.answer;const c=d.conflicts||{};$('conflict').style.display=c.detected?'block':'none';$('conflict').textContent=c.detected?'Обнаружено противоречие. '+c.priorityMessage:'';$('quotes').replaceChildren(...(d.evidence||[]).map(x=>{const e=document.createElement('article');e.className='quote';const m=document.createElement('div');m.className='meta';m.textContent=x.document+' · редакция '+x.version+(x.section?' · раздел «'+x.section+'»':'')+(x.effectiveDate?' · действует с '+x.effectiveDate:'');const q=document.createElement('div');q.textContent=x.quote;e.append(m,q);return e}));renderTrace(d.securityTrace)}
+$('demoQuestion').onchange=()=>{if($('demoQuestion').value)$('questionText').value=$('demoQuestion').value};
+$('loadDemo').onclick=()=>{if($('demoQuestion').value)$('questionText').value=$('demoQuestion').value};
+$('ask').onclick=async()=>{try{showQuestion(await api('/api/normative/question',{question:$('questionText').value,protectedMode:$('protectedMode').checked}))}catch(e){alert(e.message)}};
+let exportText='',corpus=[];
+function group(title,values){return '<h3>'+title+'</h3><ul>'+((values&&values.length?values:['Не указано']).map(x=>'<li>'+String(x).replaceAll('&','&amp;').replaceAll('<','&lt;')+'</li>').join(''))+'</ul>'}
+function toBase64(bytes){let binary='';for(let i=0;i<bytes.length;i+=8192)binary+=String.fromCharCode(...bytes.subarray(i,i+8192));return btoa(binary)}
+async function filePayload(file){const b=await file.arrayBuffer();return {name:file.name,contentBase64:toBase64(new Uint8Array(b))}}
+async function refreshCorpus(selectDocumentId){const data=await api('/api/corpus');corpus=data.documents||[];const sel=$('corpusSelect');while(sel.options.length>1)sel.remove(1);let selectIndex='';corpus.forEach((item,i)=>{sel.add(new Option((item.title||item.document_id)+' · редакция '+(item.version||'не указана'),String(i)));if(selectDocumentId&&item.document_id===selectDocumentId)selectIndex=String(i)});if(selectIndex)sel.value=selectIndex;$('corpusCount').textContent='Документов в базе: '+corpus.length}
+$('summarize').onclick=async()=>{const f=$('file').files[0],selected=$('corpusSelect').value;$('summaryError').textContent='';if(!f&&!selected){$('summaryError').textContent='Выберите документ из базы или загрузите файл.';return}try{let text,metadata;if(selected){const item=corpus[+selected];text=item.text;metadata=item}else{const uploaded=await api('/api/file',await filePayload(f));text=uploaded.text;metadata={document_id:f.name}}const d=await api('/api/normative/summary',{text,metadata});const s=d.summary;$('summaryResult').hidden=false;$('summaryMode').textContent=mode(d.mode);$('summarySource').textContent=d.source?.title?(d.source.title+' · редакция '+(d.source.version||'не указана')):'';$('summaryFields').innerHTML=group('Тема',[s.topic])+group('Аудитория',s.audience)+group('Требования',s.requirements)+group('Запреты',s.prohibitions)+group('Права',s.rights)+group('Изменения',s.changes_vs_previous.available?['Добавлено: '+(s.changes_vs_previous.added.join('; ')||'нет'),'Удалено: '+(s.changes_vs_previous.removed.join('; ')||'нет')]:['Предыдущая версия не найдена']);exportText=$('summaryFields').innerText}catch(e){$('summaryError').textContent=e.message}};
+$('kbIngest').onclick=async()=>{const f=$('kbFile').files[0],status=$('kbStatus');status.className='';status.textContent='';if(!f){status.className='error';status.textContent='Выберите нормативный документ.';return}try{const payload=await filePayload(f);const title=$('kbTitle').value.trim();if(title)payload.metadata={title};const d=await api('/api/normative/ingest',payload);status.className='ok';status.textContent='Добавлено: '+d.document.title+'. Файл: '+d.storedAs+'. Документов в базе: '+d.corpusSize+'. Можно сразу задавать вопросы.';await refreshCorpus(d.document.document_id);$('kbFile').value='';$('kbTitle').value=''}catch(e){status.className='error';status.textContent=e.message}};
 $('download').onclick=()=>{const a=document.createElement('a');a.href=URL.createObjectURL(new Blob([exportText],{type:'text/plain;charset=utf-8'}));a.download='vyzhimka.txt';a.click();URL.revokeObjectURL(a.href)};
-(async()=>{try{const data=await api('/api/corpus');corpus=data.documents||[];corpus.forEach((item,i)=>$('corpusSelect').add(new Option(`${item.title} · редакция ${item.version}`,String(i))))}catch(e){$('summaryError').textContent='Не удалось загрузить пакет документов: '+e.message}})();
-</script></body></html>
+refreshCorpus().catch(e=>{$('corpusCount').textContent='База недоступна';$('summaryError').textContent=e.message});
+</script>
+</body>
+</html>

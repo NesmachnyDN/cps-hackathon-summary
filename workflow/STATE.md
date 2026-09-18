@@ -1,9 +1,9 @@
 # Workflow State
 
-STATUS: OFFICIAL_CORPUS_INTEGRATED
-CURRENT_TASK_ID: OFFICIAL-DOC-INTEGRATION
-CURRENT_MODE: FINALIZE
-TARGET_BRANCH: main
+STATUS: DEMO_HARDENING_READY
+CURRENT_TASK_ID: DEMO-PROTECTED-KB-UPLOAD
+CURRENT_MODE: REVIEW
+TARGET_BRANCH: feature/protected-demo-kb-upload
 APPROVED_BRANCH: main
 PRIMARY_REPOSITORY: NesmachnyDN/cps-hackathon-summary
 EXECUTION_MODE: LOCAL_ORCHESTRATED
@@ -19,7 +19,8 @@ MVP:
 - structured summary: PASS
 - direct legacy DOC upload: PASS
 - Groq via local VPN proxy: PASS
-- final code-level safety smoke: PASS
-- final live Groq smoke on last backend revision: PENDING_RESTART
+- protected demo mode + trace: PASS
+- UI knowledge-base ingestion: PASS
+- 7 prepared demo questions: PASS
 
-NEXT_ACTION: restart once via scripts/run_groq_proxy.sh to load the last backend hardening, run the two demo scenarios, then freeze demo build.
+NEXT_ACTION: keep this slice isolated on feature/protected-demo-kb-upload until the current main-branch review is finished; merge only when explicitly desired.

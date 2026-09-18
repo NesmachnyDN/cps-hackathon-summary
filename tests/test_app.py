@@ -4,6 +4,7 @@ import os
 import unittest
 import zipfile
 from pathlib import Path
+from tempfile import TemporaryDirectory
 from io import BytesIO
 from unittest.mock import patch
 from urllib.error import HTTPError
@@ -27,6 +28,8 @@ from app import (
     groq_proxy_url,
     extract_uploaded_text,
     import_file_payload,
+    ingest_normative_document,
+    load_corpus,
     load_prompts,
     normalize_chat_url,
     parse_detection_response,
@@ -38,6 +41,7 @@ from app import (
     detect_conflicts,
     retrieve_clauses,
     summarize_document,
+    _optional_llm_with_trace,
     _current_documents,
 )
 
@@ -635,6 +639,114 @@ class NormativeMvpTests(unittest.TestCase):
         changes = result["summary"]["changes_vs_previous"]
         self.assertTrue(changes["available"])
         self.assertTrue(any("двух дней" in item for item in changes["added"]))
+
+class DemoHardeningTests(unittest.TestCase):
+    def test_protected_llm_trace_masks_outbound_and_restores_response(self):
+        config = ProviderConfig(
+            profile="GROQ_TEMP_48H_TUN",
+            base_url="https://api.example.test/openai/v1",
+            model="demo-model",
+            api_key="test-only",
+            network="SYSTEM_TUNNEL",
+        )
+        prompt = (
+            "Компания СеверГаз использует систему ДокФлоу-X и проект Миграция-42. "
+            "Контакт demo.user@example.org."
+        )
+        provider_response = (
+            "Ответ для [[ORG_001]], [[SYSTEM_001]], [[PROJECT_001]], "
+            "[[EMAIL_MASKED_001]]."
+        )
+        with patch("app.active_detector_config", return_value=config), patch(
+            "app.call_provider", return_value=provider_response
+        ):
+            result, trace = _optional_llm_with_trace(
+                prompt, "system", protected_mode=True, stage="demo"
+            )
+        self.assertEqual(trace["status"], "PASS")
+        self.assertNotIn("СеверГаз", trace["outboundPrompt"])
+        self.assertNotIn("ДокФлоу-X", trace["outboundPrompt"])
+        self.assertNotIn("demo.user@example.org", trace["outboundPrompt"])
+        self.assertNotIn("СеверГаз", json.dumps(trace["providerRequest"], ensure_ascii=False))
+        self.assertIn("СеверГаз", json.dumps(trace["entities"], ensure_ascii=False))
+        self.assertIn("СеверГаз", result)
+        self.assertIn("ДокФлоу-X", result)
+        self.assertIn("demo.user@example.org", result)
+
+    def test_unavailable_provider_still_exposes_safe_outbound_preview(self):
+        config = ProviderConfig(
+            profile="GROQ_TEMP_48H_TUN",
+            base_url="https://api.example.test/openai/v1",
+            model="demo-model",
+            api_key=None,
+            network="SYSTEM_TUNNEL",
+        )
+        with patch("app.active_detector_config", return_value=config), patch(
+            "app.call_provider"
+        ) as provider:
+            result, trace = _optional_llm_with_trace(
+                "Компания СеверГаз. Контакт demo.user@example.org.",
+                "system",
+                protected_mode=True,
+            )
+        self.assertIsNone(result)
+        self.assertEqual(trace["status"], "PROVIDER_UNAVAILABLE")
+        self.assertNotIn("СеверГаз", trace["outboundPrompt"])
+        self.assertIsNotNone(trace["providerRequest"])
+        provider.assert_not_called()
+
+    def test_unprotected_mode_still_blocks_credentials(self):
+        config = ProviderConfig(
+            profile="GROQ_TEMP_48H_TUN",
+            base_url="https://api.example.test/openai/v1",
+            model="demo-model",
+            api_key="test-only",
+            network="SYSTEM_TUNNEL",
+        )
+        with patch("app.active_detector_config", return_value=config), patch(
+            "app.call_provider"
+        ) as provider:
+            result, trace = _optional_llm_with_trace(
+                "password=DEMO_ONLY_CREDENTIAL_2026",
+                "system",
+                protected_mode=False,
+            )
+        self.assertIsNone(result)
+        self.assertEqual(trace["status"], "BLOCKED")
+        provider.assert_not_called()
+
+    def test_uploaded_normative_document_persists_and_joins_corpus(self):
+        with TemporaryDirectory(dir=Path.cwd()) as tmp:
+            root = Path(tmp)
+            base = root / "base.json"
+            extra = root / "uploaded.json"
+            uploads = root / "files"
+            base.write_text(json.dumps([{
+                "document_id": "base", "title": "Базовый документ",
+                "version": "1", "status": "current", "text": "Базовая норма."
+            }], ensure_ascii=False), encoding="utf-8")
+            encoded = base64.b64encode(
+                "Положение о доступе\nРаботник обязан согласовать доступ к системе.".encode("utf-8")
+            ).decode()
+            with patch("app.CORPUS_PATH", base), patch(
+                "app.UPLOADED_CORPUS_PATH", extra
+            ), patch("app.KNOWLEDGE_UPLOAD_DIR", uploads):
+                result = ingest_normative_document({
+                    "name": "access-policy.txt", "contentBase64": encoded
+                })
+                corpus = load_corpus()
+            self.assertTrue((uploads / "access-policy.txt").exists())
+            self.assertEqual(result["corpusSize"], 2)
+            self.assertEqual(len(corpus), 2)
+            self.assertEqual(corpus[-1]["source_file"], "access-policy.txt")
+
+    def test_demo_ui_contains_protected_mode_ingest_and_seven_questions(self):
+        html = Path("static/index.html").read_text(encoding="utf-8")
+        self.assertIn('id="protectedMode"', html)
+        self.assertIn("/api/normative/ingest", html)
+        demo_select = html.split('<select id="demoQuestion">', 1)[1].split("</select>", 1)[0]
+        self.assertEqual(demo_select.count("<option"), 8)
+
 
 if __name__ == "__main__":
     unittest.main()

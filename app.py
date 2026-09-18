@@ -33,6 +33,9 @@ MAX_FILE_BYTES = 2_000_000
 MAX_EXTRACTED_CHARS = 200_000
 SUPPORTED_FILE_EXTENSIONS = {".txt", ".md", ".csv", ".json", ".doc", ".docx", ".pdf"}
 CORPUS_PATH = Path(os.environ.get("NORMATIVE_CORPUS_PATH", str(ROOT / "demo" / "normative_corpus.json")))
+OFFICIAL_INBOX = ROOT / "official_documents_inbox"
+KNOWLEDGE_UPLOAD_DIR = OFFICIAL_INBOX / "uploaded"
+UPLOADED_CORPUS_PATH = OFFICIAL_INBOX / "uploaded_corpus.json"
 PROMPTS_PATH = Path(os.environ.get("NORMATIVE_PROMPTS_PATH", str(ROOT / "prompts.json")))
 POLICY_RULES = [
     {"content": "Обычный текст", "action": "ALLOW"},
@@ -605,6 +608,20 @@ def provider_timeout_seconds(config: ProviderConfig) -> int:
     return min(max(value, 10), 300)
 
 
+def build_provider_payload(
+    user_text: str,
+    config: ProviderConfig,
+    system_prompt: str = PROCESSOR_SYSTEM_PROMPT,
+    max_tokens: int = 240,
+) -> dict[str, object]:
+    payload = build_chat_request(user_text, config.model, system_prompt, max_tokens=max_tokens)
+    if config.profile == "GROQ_TEMP_48H_TUN":
+        payload["max_completion_tokens"] = payload.pop("max_tokens")
+        if config.model in {"openai/gpt-oss-120b", "openai/gpt-oss-20b"}:
+            payload["reasoning_effort"] = "low"
+    return payload
+
+
 def call_provider(
     user_text: str,
     config: ProviderConfig | None = None,
@@ -620,13 +637,7 @@ def call_provider(
     if not chat_url:
         raise ProviderError("Provider endpoint is not configured")
 
-    payload = build_chat_request(user_text, config.model, system_prompt, max_tokens=max_tokens)
-    if config.profile == "GROQ_TEMP_48H_TUN":
-        payload["max_completion_tokens"] = payload.pop("max_tokens")
-        if config.model in {"openai/gpt-oss-120b", "openai/gpt-oss-20b"}:
-            # Keep document summaries responsive and reserve completion budget for
-            # visible content instead of spending it all on hidden reasoning.
-            payload["reasoning_effort"] = "low"
+    payload = build_provider_payload(user_text, config, system_prompt, max_tokens=max_tokens)
     body = json.dumps(payload, ensure_ascii=False).encode("utf-8")
     headers = {
         "Content-Type": "application/json",
@@ -849,15 +860,87 @@ def load_prompts() -> dict[str, str]:
     return defaults
 
 
-def load_corpus() -> list[dict[str, object]]:
+def _read_corpus_file(path: Path) -> list[dict[str, object]]:
     try:
-        data = json.loads(CORPUS_PATH.read_text(encoding="utf-8"))
+        data = json.loads(path.read_text(encoding="utf-8"))
+    except FileNotFoundError:
+        return []
     except (OSError, json.JSONDecodeError) as exc:
         raise ValueError(f"normative corpus is unavailable: {exc}") from exc
     if not isinstance(data, list):
         raise ValueError("normative corpus must be a JSON array")
-    return [item for item in data if isinstance(item, dict) and item.get("title") and item.get("text")]
+    return [
+        item for item in data
+        if isinstance(item, dict) and item.get("title") and item.get("text")
+    ]
 
+
+def load_corpus() -> list[dict[str, object]]:
+    corpus = _read_corpus_file(CORPUS_PATH)
+    if UPLOADED_CORPUS_PATH.resolve() != CORPUS_PATH.resolve():
+        corpus.extend(_read_corpus_file(UPLOADED_CORPUS_PATH))
+    return corpus
+
+
+def _unique_upload_path(filename: str) -> Path:
+    safe_name = Path(filename).name.strip()
+    if not safe_name or safe_name in {".", ".."}:
+        raise ValueError("invalid file name")
+    KNOWLEDGE_UPLOAD_DIR.mkdir(parents=True, exist_ok=True)
+    candidate = KNOWLEDGE_UPLOAD_DIR / safe_name
+    counter = 2
+    while candidate.exists():
+        candidate = KNOWLEDGE_UPLOAD_DIR / f"{Path(safe_name).stem}-{counter}{Path(safe_name).suffix}"
+        counter += 1
+    return candidate
+
+
+def ingest_normative_document(payload: dict[str, object]) -> dict[str, object]:
+    name = str(payload.get("name", "")).strip()
+    content = str(payload.get("contentBase64", "")).strip()
+    if not name or not content:
+        raise ValueError("name and contentBase64 are required")
+    try:
+        raw = base64.b64decode(content, validate=True)
+    except (ValueError, base64.binascii.Error) as exc:
+        raise ValueError("contentBase64 must be valid base64") from exc
+    extracted = extract_uploaded_text(name, raw)
+    target = _unique_upload_path(name)
+    target.write_bytes(raw)
+
+    metadata = payload.get("metadata")
+    metadata = metadata if isinstance(metadata, dict) else {}
+    text = str(extracted["text"])
+    lines = [line.strip(" -•	") for line in text.splitlines() if line.strip()]
+    title = str(metadata.get("title") or Path(target.name).stem)
+    document_id = str(metadata.get("document_id") or f"upload:{Path(target.name).stem}")
+    version = str(metadata.get("version") or "загружено через интерфейс")
+    clauses = [
+        {"quote": line, "search_text": f"{title} {line}", "section": "Загруженный документ"}
+        for line in lines if len(line) >= 20
+    ]
+    record = {
+        "document_id": document_id,
+        "title": title,
+        "version": version,
+        "effective_date": metadata.get("effective_date"),
+        "status": "current",
+        "priority": metadata.get("priority"),
+        "source_file": target.name,
+        "clauses": clauses,
+        "text": text,
+    }
+    uploaded = _read_corpus_file(UPLOADED_CORPUS_PATH)
+    uploaded.append(record)
+    UPLOADED_CORPUS_PATH.parent.mkdir(parents=True, exist_ok=True)
+    temp_path = UPLOADED_CORPUS_PATH.with_suffix(".json.tmp")
+    temp_path.write_text(json.dumps(uploaded, ensure_ascii=False, indent=2), encoding="utf-8")
+    temp_path.replace(UPLOADED_CORPUS_PATH)
+    return {
+        "document": record,
+        "storedAs": str(target.relative_to(ROOT)),
+        "corpusSize": len(load_corpus()),
+    }
 
 def _tokens(text: str) -> set[str]:
     return {word for word in re.findall(r"[A-Za-zА-Яа-яЁё0-9-]{3,}", text.lower()) if word not in {"что", "как", "для", "или", "это", "при", "все", "the", "and"}}
@@ -1043,36 +1126,103 @@ def detect_conflicts(results: list[dict[str, object]]) -> dict[str, object]:
     }
 
 
-def _optional_llm(prompt: str, system: str, max_tokens: int = 240) -> str | None:
+def _optional_llm_with_trace(
+    prompt: str,
+    system: str,
+    max_tokens: int = 240,
+    protected_mode: bool = True,
+    stage: str = "LLM",
+) -> tuple[str | None, dict[str, object]]:
     config = active_detector_config()
-    if not config.configured:
-        return None
-    outbound, _, mapping, policy = apply_policy(prompt, [])
-    if not policy["allowed"]:
-        return None
-    try:
-        return restore(
-            call_provider(
-                outbound,
-                config=config,
-                timeout=provider_timeout_seconds(config),
-                system_prompt=system,
-                max_tokens=max_tokens,
+    trace: dict[str, object] = {
+        "stage": stage,
+        "protectedMode": protected_mode,
+        "originalPrompt": prompt,
+        "provider": {
+            "profile": config.profile,
+            "model": config.model,
+            "network": config.network,
+            "endpoint": normalize_chat_url(config.base_url),
+            "configured": config.configured,
+        },
+        "entities": [],
+        "policy": None,
+        "outboundPrompt": None,
+        "providerRequest": None,
+        "providerResponse": None,
+        "restoredResponse": None,
+        "status": "NOT_SENT",
+    }
+    mapping: dict[str, str] = {}
+    if protected_mode:
+        local_terms = deterministic_sensitive_candidates(prompt)
+        outbound, entities, mapping, policy = apply_policy(prompt, local_terms)
+        trace["entities"] = [entity.public_dict() for entity in entities]
+    else:
+        blocked = detect_blocking_credentials(prompt)
+        policy = {
+            "decision": "BLOCK" if blocked else "ALLOW",
+            "allowed": not blocked,
+            "counts": {"PSEUDONYMIZE": 0, "MASK": 0, "BLOCK": len(blocked)},
+            "findings": [
+                {"category": "CREDENTIAL", "action": "BLOCK", "kind": item["kind"]}
+                for item in blocked
+            ],
+            "rules": POLICY_RULES,
+            "reason": (
+                "Credentials запрещены к отправке даже при выключенном защищённом режиме."
+                if blocked
+                else "Защищённый режим выключен: пользовательский prompt отправляется без псевдонимизации."
             ),
-            mapping,
-        )
-    except ProviderError:
-        return None
+        }
+        outbound = prompt
 
+    trace["policy"] = policy
+    if not policy["allowed"]:
+        trace["status"] = "BLOCKED"
+        return None, trace
+
+    trace["outboundPrompt"] = outbound
+    trace["providerRequest"] = build_provider_payload(
+        outbound, config, system_prompt=system, max_tokens=max_tokens
+    )
+    if not config.configured:
+        trace["status"] = "PROVIDER_UNAVAILABLE"
+        return None, trace
+    try:
+        provider_response = call_provider(
+            outbound,
+            config=config,
+            timeout=provider_timeout_seconds(config),
+            system_prompt=system,
+            max_tokens=max_tokens,
+        )
+    except ProviderError as exc:
+        trace["status"] = "ERROR"
+        trace["error"] = str(exc)
+        return None, trace
+
+    restored = restore(provider_response, mapping) if protected_mode else provider_response
+    trace["providerResponse"] = provider_response
+    trace["restoredResponse"] = restored
+    trace["status"] = "PASS"
+    return restored, trace
+
+
+def _optional_llm(prompt: str, system: str, max_tokens: int = 240) -> str | None:
+    result, _ = _optional_llm_with_trace(
+        prompt, system, max_tokens=max_tokens, protected_mode=True
+    )
+    return result
 
 def answer_normative_question(payload: dict[str, object]) -> dict[str, object]:
     question = str(payload.get("question", "")).strip()
     if not question:
         raise ValueError("question must not be empty")
+    protected_mode = payload.get("protectedMode", True) is not False
     prompts = load_prompts()
+    traces: list[dict[str, object]] = []
 
-    # Agentic-lite retrieval: use the fast local search first and invoke semantic
-    # expansion only when lexical evidence is weak. This keeps the demo responsive.
     def is_strong(items: list[dict[str, object]]) -> bool:
         if not items:
             return False
@@ -1086,17 +1236,21 @@ def answer_normative_question(payload: dict[str, object]) -> dict[str, object]:
     results = found["results"]
     strong = is_strong(results)
     expanded = None
-    # Expansion is allowed only when the question already identifies a governed
-    # role/document. For an unanchored situational question a loose synonym must
-    # not turn an incidental word into a normative answer.
     can_expand = bool(results and int(results[0].get("metadataMatches", 0)) >= 1)
     if not strong and can_expand:
-        expanded = _optional_llm(question, prompts["expansion_system"])
+        expanded, trace = _optional_llm_with_trace(
+            question,
+            prompts["expansion_system"],
+            protected_mode=protected_mode,
+            stage="Расширение поискового запроса",
+        )
+        traces.append(trace)
         if expanded:
             found = retrieve_clauses(question + " " + expanded)
             results = found["results"]
             strong = is_strong(results)
 
+    security = {"protectedMode": protected_mode, "calls": traces}
     if not strong:
         return {
             "answer": "В предоставленных документах это не урегулировано. Рекомендуем обратиться к HR-партнёру.",
@@ -1104,20 +1258,32 @@ def answer_normative_question(payload: dict[str, object]) -> dict[str, object]:
             "conflicts": detect_conflicts([]),
             "mode": "not_regulated",
             "expandedQuery": expanded,
+            "securityTrace": security,
         }
 
     conflict = detect_conflicts(results)
-    evidence = "\n".join(f"[{r['document']}, версия {r['version']}] {r['quote']}" for r in results)
-    priority_context = conflict["priorityMessage"] if conflict["detected"] else "Явного конфликта найденных норм нет."
-    llm = _optional_llm(
+    evidence = "\n".join(
+        f"[{r['document']}, версия {r['version']}] {r['quote']}" for r in results
+    )
+    priority_context = (
+        conflict["priorityMessage"] if conflict["detected"]
+        else "Явного конфликта найденных норм нет."
+    )
+    llm_prompt = (
         "Вопрос сотрудника: " + question
         + "\n\nНормативные фрагменты:\n" + evidence
         + "\n\nПроверка конфликта и приоритета: " + str(priority_context)
         + "\n\nОтветь максимум тремя короткими предложениями. Если вопрос предполагает ответ да/нет, "
           "начни с «Да», «Нет» или «Зависит». В остальных случаях сразу дай прямой ответ. "
-          "Объясни решение простым языком и не добавляй фактов вне приведённых фрагментов.",
-        prompts["query_system"],
+          "Объясни решение простым языком и не добавляй фактов вне приведённых фрагментов."
     )
+    llm, trace = _optional_llm_with_trace(
+        llm_prompt,
+        prompts["query_system"],
+        protected_mode=protected_mode,
+        stage="Формирование ответа по нормативным фрагментам",
+    )
+    traces.append(trace)
     plain = llm or "Офлайн-режим: " + " ".join(str(r["quote"]) for r in results[:2])
     return {
         "answer": plain,
@@ -1125,8 +1291,8 @@ def answer_normative_question(payload: dict[str, object]) -> dict[str, object]:
         "conflicts": conflict,
         "mode": "llm_grounded" if llm else "offline_fallback",
         "expandedQuery": expanded,
+        "securityTrace": {"protectedMode": protected_mode, "calls": traces},
     }
-
 
 def _summary_fields(text: str) -> dict[str, object]:
     lines = [x.strip(" -•\t") for x in text.splitlines() if x.strip()]
@@ -1333,7 +1499,7 @@ class Handler(BaseHTTPRequestHandler):
             if path == "/api/preflight":
                 self._json(200, run_provider_preflight())
                 return
-            if path not in {"/api/file", "/api/detect", "/api/analyze", "/api/process", "/api/normative/question", "/api/normative/summary"}:
+            if path not in {"/api/file", "/api/detect", "/api/analyze", "/api/process", "/api/normative/question", "/api/normative/summary", "/api/normative/ingest"}:
                 self._json(404, {"error": "not_found"})
                 return
             length = int(self.headers.get("Content-Length", "0"))
@@ -1352,6 +1518,8 @@ class Handler(BaseHTTPRequestHandler):
                 self._json(200, answer_normative_question(payload))
             elif path == "/api/normative/summary":
                 self._json(200, summarize_document(payload))
+            elif path == "/api/normative/ingest":
+                self._json(200, ingest_normative_document(payload))
             else:
                 result = process_payload(payload)
                 _PROVIDER_READINESS.update(state="PASS", message="Live-вызов провайдера: PASS. Реальный ответ получен.")
