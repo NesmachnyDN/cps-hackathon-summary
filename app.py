@@ -947,7 +947,7 @@ def answer_normative_question(payload: dict[str, object]) -> dict[str, object]:
             "answer": "В предоставленных документах это не урегулировано. Рекомендуем обратиться к HR-партнёру.",
             "evidence": [],
             "conflicts": detect_conflicts([]),
-            "mode": "offline_fallback",
+            "mode": "not_regulated",
             "expandedQuery": expanded,
         }
 

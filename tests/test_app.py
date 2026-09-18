@@ -540,6 +540,7 @@ class NormativeMvpTests(unittest.TestCase):
     def test_no_answer_recommends_hr(self):
         result = answer_normative_question({"question": "Как заказать корпоративный автобус на Марс?"})
         self.assertEqual(result["evidence"], [])
+        self.assertEqual(result["mode"], "not_regulated")
         self.assertIn("не урегулировано", result["answer"])
         self.assertIn("HR", result["answer"])
 
