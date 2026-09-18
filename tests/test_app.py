@@ -740,6 +740,58 @@ class DemoHardeningTests(unittest.TestCase):
             self.assertEqual(len(corpus), 2)
             self.assertEqual(corpus[-1]["source_file"], "access-policy.txt")
 
+    def test_custom_protection_policy_changes_outbound_and_restores_locally(self):
+        original = (
+            "Компания СеверГаз использует систему ДокФлоу-X. "
+            "Контакт demo.user@example.org."
+        )
+        result = analyze_payload(
+            {
+                "text": original,
+                "terms": [],
+                "protectionPolicy": {"ORG": "ALLOW", "SYSTEM": "PSEUDONYMIZE", "EMAIL": "MASK"},
+            }
+        )
+        self.assertIn("СеверГаз", result["outbound"])
+        self.assertNotIn("ДокФлоу-X", result["outbound"])
+        self.assertNotIn("demo.user@example.org", result["outbound"])
+        self.assertEqual(result["localRestoreCheck"], original)
+        self.assertEqual(result["policy"]["actions"]["ORG"], "ALLOW")
+        detected = {(x["category"], x["action"]) for x in result["detectedTerms"]}
+        self.assertIn(("ORG", "ALLOW"), detected)
+        self.assertIn(("SYSTEM", "PSEUDONYMIZE"), detected)
+        self.assertIn(("EMAIL", "MASK"), detected)
+
+    def test_credentials_policy_cannot_be_weakened(self):
+        with self.assertRaises(ValueError):
+            analyze_payload(
+                {
+                    "text": "password=DEMO_ONLY_CREDENTIAL_2026",
+                    "terms": [],
+                    "protectionPolicy": {"CREDENTIAL": "ALLOW"},
+                }
+            )
+
+    def test_summary_forwards_selected_protection_policy(self):
+        with patch("app._optional_llm", return_value=None) as llm:
+            summarize_document(
+                {
+                    "text": "Положение\nКомпания СеверГаз обязана согласовать доступ.",
+                    "protectionPolicy": {"ORG": "ALLOW"},
+                }
+            )
+        self.assertEqual(llm.call_args.kwargs["protection_policy"]["ORG"], "ALLOW")
+        self.assertEqual(llm.call_args.kwargs["protection_policy"]["CREDENTIAL"], "BLOCK")
+
+    def test_privacy_ui_exposes_real_policy_preview(self):
+        html = Path("static/index.html").read_text(encoding="utf-8")
+        self.assertIn('data-panel="privacy"', html)
+        self.assertIn('id="previewPrivacy"', html)
+        self.assertIn('data-policy="ORG"', html)
+        self.assertIn('data-policy="EMAIL"', html)
+        self.assertIn("Безопасные данные для внешнего AI", html)
+        self.assertIn("/api/analyze", html)
+
     def test_demo_ui_contains_protected_mode_ingest_and_seven_questions(self):
         html = Path("static/index.html").read_text(encoding="utf-8")
         self.assertIn('id="protectedMode"', html)

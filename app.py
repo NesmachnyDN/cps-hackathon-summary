@@ -37,6 +37,26 @@ OFFICIAL_INBOX = ROOT / "official_documents_inbox"
 KNOWLEDGE_UPLOAD_DIR = OFFICIAL_INBOX / "uploaded"
 UPLOADED_CORPUS_PATH = OFFICIAL_INBOX / "uploaded_corpus.json"
 PROMPTS_PATH = Path(os.environ.get("NORMATIVE_PROMPTS_PATH", str(ROOT / "prompts.json")))
+DEFAULT_PROTECTION_POLICY = {
+    "ORG": "PSEUDONYMIZE",
+    "SYSTEM": "PSEUDONYMIZE",
+    "PROJECT": "PSEUDONYMIZE",
+    "PERSON": "PSEUDONYMIZE",
+    "SECRET": "PSEUDONYMIZE",
+    "EMAIL": "MASK",
+    "PHONE": "MASK",
+    "CREDENTIAL": "BLOCK",
+}
+PROTECTION_POLICY_ALLOWED = {
+    "ORG": {"ALLOW", "PSEUDONYMIZE"},
+    "SYSTEM": {"ALLOW", "PSEUDONYMIZE"},
+    "PROJECT": {"ALLOW", "PSEUDONYMIZE"},
+    "PERSON": {"ALLOW", "PSEUDONYMIZE"},
+    "SECRET": {"ALLOW", "PSEUDONYMIZE"},
+    "EMAIL": {"ALLOW", "MASK"},
+    "PHONE": {"ALLOW", "MASK"},
+    "CREDENTIAL": {"BLOCK"},
+}
 POLICY_RULES = [
     {"content": "Обычный текст", "action": "ALLOW"},
     {"content": "ORG / SYSTEM / PROJECT / PERSON / внутренние идентификаторы", "action": "PSEUDONYMIZE"},
@@ -108,6 +128,43 @@ class PolicyBlockedError(RuntimeError):
         self.policy = policy
 
 
+def normalize_protection_policy(raw: object = None) -> dict[str, str]:
+    actions = dict(DEFAULT_PROTECTION_POLICY)
+    if raw is None:
+        return actions
+    if not isinstance(raw, dict):
+        raise ValueError("protectionPolicy must be an object")
+    for raw_category, raw_action in raw.items():
+        category = str(raw_category).strip().upper()
+        action = str(raw_action).strip().upper()
+        if category not in PROTECTION_POLICY_ALLOWED:
+            raise ValueError(f"unsupported protection category: {category}")
+        if action not in PROTECTION_POLICY_ALLOWED[category]:
+            raise ValueError(f"unsupported action {action} for {category}")
+        actions[category] = action
+    # Credentials are a non-overridable hard safety boundary.
+    actions["CREDENTIAL"] = "BLOCK"
+    return actions
+
+
+def policy_rules_for_actions(actions: dict[str, str]) -> list[dict[str, str]]:
+    return [
+        {"content": "Обычный текст", "action": "ALLOW"},
+        {
+            "content": "ORG / SYSTEM / PROJECT / PERSON / внутренние идентификаторы",
+            "action": " / ".join(
+                f"{category}:{actions[category]}"
+                for category in ("ORG", "SYSTEM", "PROJECT", "PERSON", "SECRET")
+            ),
+        },
+        {
+            "content": "Email / телефон",
+            "action": f"EMAIL:{actions['EMAIL']} / PHONE:{actions['PHONE']}",
+        },
+        {"content": "Credentials / private keys", "action": "BLOCK"},
+    ]
+
+
 def _normalize_terms(raw_terms: Iterable[dict[str, object]]) -> list[tuple[str, str]]:
     result: list[tuple[str, str]] = []
     seen: set[tuple[str, str]] = set()
@@ -158,26 +215,38 @@ def deterministic_sensitive_candidates(text: str) -> list[dict[str, str]]:
                 by_value[value] = category
     for match in TECHNICAL_ID_RE.finditer(text):
         by_value[match.group(0)] = "SECRET"
+    for match in EMAIL_RE.finditer(text):
+        by_value[match.group(0)] = "EMAIL"
+    for match in PHONE_RE.finditer(text):
+        by_value[match.group(0)] = "PHONE"
     return [{"value": value, "category": category} for value, category in by_value.items()]
 
 
-def pseudonymize(text: str, raw_terms: Iterable[dict[str, object]]) -> tuple[str, list[Entity], dict[str, str]]:
+def pseudonymize(
+    text: str,
+    raw_terms: Iterable[dict[str, object]],
+    policy_actions: object = None,
+) -> tuple[str, list[Entity], dict[str, str]]:
     if not isinstance(text, str):
         raise ValueError("text must be a string")
 
+    actions = normalize_protection_policy(policy_actions)
     counters: defaultdict[str, int] = defaultdict(int)
     value_to_entity: dict[tuple[str, str], Entity] = {}
     token_to_value: dict[str, str] = {}
     result = text
 
     def replace_value(value: str, category: str, source: str) -> str:
+        action = actions.get(category, "PSEUDONYMIZE")
+        if action == "ALLOW":
+            return source
         key = (value, category)
         entity = value_to_entity.get(key)
         if entity is None:
             counters[category] += 1
             token = (
                 f"[[{category}_MASKED_{counters[category]:03d}]]"
-                if category in {"EMAIL", "PHONE"}
+                if action == "MASK"
                 else f"[[{category}_{counters[category]:03d}]]"
             )
             entity = Entity(value=value, category=category, token=token)
@@ -221,10 +290,6 @@ def restore(text: str, token_to_value: dict[str, str]) -> str:
     return restored
 
 
-def policy_action_for_category(category: str) -> str:
-    return "MASK" if category in {"EMAIL", "PHONE"} else "PSEUDONYMIZE"
-
-
 def detect_blocking_credentials(text: str) -> list[dict[str, str]]:
     findings: list[dict[str, str]] = []
     seen: set[str] = set()
@@ -240,8 +305,10 @@ def detect_blocking_credentials(text: str) -> list[dict[str, str]]:
 def apply_policy(
     text: str,
     raw_terms: Iterable[dict[str, object]],
+    policy_actions: object = None,
 ) -> tuple[str, list[Entity], dict[str, str], dict[str, object]]:
-    outbound, entities, token_to_value = pseudonymize(text, raw_terms)
+    actions = normalize_protection_policy(policy_actions)
+    outbound, entities, token_to_value = pseudonymize(text, raw_terms, actions)
     blocked = detect_blocking_credentials(text)
 
     for index, finding in enumerate(blocked, start=1):
@@ -257,7 +324,7 @@ def apply_policy(
     entity_findings = [
         {
             "category": entity.category,
-            "action": policy_action_for_category(entity.category),
+            "action": actions.get(entity.category, "PSEUDONYMIZE"),
             "token": entity.token,
         }
         for entity in entities
@@ -278,7 +345,8 @@ def apply_policy(
         "allowed": not blocked,
         "counts": counts,
         "findings": entity_findings + block_findings,
-        "rules": POLICY_RULES,
+        "rules": policy_rules_for_actions(actions),
+        "actions": actions,
         "reason": (
             "Обнаружены credentials, которые запрещено передавать во внешний AI."
             if blocked
@@ -773,7 +841,11 @@ def process_payload(payload: dict[str, object], provider_call=None) -> dict[str,
     raw_terms = payload.get("terms", [])
     if not isinstance(raw_terms, list):
         raise ValueError("terms must be a list")
-    outbound, entities, token_to_value, policy = apply_policy(text, raw_terms)
+    terms = list(raw_terms) + deterministic_sensitive_candidates(text)
+    protection_policy = payload.get("protectionPolicy")
+    outbound, entities, token_to_value, policy = apply_policy(
+        text, terms, protection_policy
+    )
     if not policy["allowed"]:
         raise PolicyBlockedError(
             "Security policy blocked external processing",
@@ -822,7 +894,11 @@ def analyze_payload(payload: dict[str, object]) -> dict[str, object]:
     raw_terms = payload.get("terms", [])
     if not isinstance(raw_terms, list):
         raise ValueError("terms must be a list")
-    outbound, entities, token_to_value, policy = apply_policy(text, raw_terms)
+    terms = list(raw_terms) + deterministic_sensitive_candidates(text)
+    protection_policy = payload.get("protectionPolicy")
+    outbound, entities, token_to_value, policy = apply_policy(
+        text, terms, protection_policy
+    )
     local_restore = restore(outbound, token_to_value)
     external = external_provider_config()
     return {
@@ -836,6 +912,14 @@ def analyze_payload(payload: dict[str, object]) -> dict[str, object]:
         "manualCopyRequired": not external.configured,
         "copyAllowed": bool(policy["allowed"]),
         "policy": policy,
+        "detectedTerms": [
+            {
+                "value": value,
+                "category": category,
+                "action": policy["actions"].get(category, "PSEUDONYMIZE"),
+            }
+            for value, category in _normalize_terms(terms)
+        ],
         "providerRequestPreview": (
             build_chat_request(outbound, external.model)
             if external.configured and policy["allowed"]
@@ -1132,6 +1216,7 @@ def _optional_llm_with_trace(
     max_tokens: int = 240,
     protected_mode: bool = True,
     stage: str = "LLM",
+    protection_policy: object = None,
 ) -> tuple[str | None, dict[str, object]]:
     config = active_detector_config()
     trace: dict[str, object] = {
@@ -1156,7 +1241,9 @@ def _optional_llm_with_trace(
     mapping: dict[str, str] = {}
     if protected_mode:
         local_terms = deterministic_sensitive_candidates(prompt)
-        outbound, entities, mapping, policy = apply_policy(prompt, local_terms)
+        outbound, entities, mapping, policy = apply_policy(
+            prompt, local_terms, protection_policy
+        )
         trace["entities"] = [entity.public_dict() for entity in entities]
     else:
         blocked = detect_blocking_credentials(prompt)
@@ -1209,9 +1296,18 @@ def _optional_llm_with_trace(
     return restored, trace
 
 
-def _optional_llm(prompt: str, system: str, max_tokens: int = 240) -> str | None:
+def _optional_llm(
+    prompt: str,
+    system: str,
+    max_tokens: int = 240,
+    protection_policy: object = None,
+) -> str | None:
     result, _ = _optional_llm_with_trace(
-        prompt, system, max_tokens=max_tokens, protected_mode=True
+        prompt,
+        system,
+        max_tokens=max_tokens,
+        protected_mode=True,
+        protection_policy=protection_policy,
     )
     return result
 
@@ -1220,6 +1316,7 @@ def answer_normative_question(payload: dict[str, object]) -> dict[str, object]:
     if not question:
         raise ValueError("question must not be empty")
     protected_mode = payload.get("protectedMode", True) is not False
+    protection_policy = normalize_protection_policy(payload.get("protectionPolicy"))
     prompts = load_prompts()
     traces: list[dict[str, object]] = []
 
@@ -1243,6 +1340,7 @@ def answer_normative_question(payload: dict[str, object]) -> dict[str, object]:
             prompts["expansion_system"],
             protected_mode=protected_mode,
             stage="Расширение поискового запроса",
+            protection_policy=protection_policy,
         )
         traces.append(trace)
         if expanded:
@@ -1250,7 +1348,11 @@ def answer_normative_question(payload: dict[str, object]) -> dict[str, object]:
             results = found["results"]
             strong = is_strong(results)
 
-    security = {"protectedMode": protected_mode, "calls": traces}
+    security = {
+        "protectedMode": protected_mode,
+        "protectionPolicy": protection_policy,
+        "calls": traces,
+    }
     if not strong:
         return {
             "answer": "В предоставленных документах это не урегулировано. Рекомендуем обратиться к HR-партнёру.",
@@ -1282,6 +1384,7 @@ def answer_normative_question(payload: dict[str, object]) -> dict[str, object]:
         prompts["query_system"],
         protected_mode=protected_mode,
         stage="Формирование ответа по нормативным фрагментам",
+        protection_policy=protection_policy,
     )
     traces.append(trace)
     plain = llm or "Офлайн-режим: " + " ".join(str(r["quote"]) for r in results[:2])
@@ -1291,7 +1394,11 @@ def answer_normative_question(payload: dict[str, object]) -> dict[str, object]:
         "conflicts": conflict,
         "mode": "llm_grounded" if llm else "offline_fallback",
         "expandedQuery": expanded,
-        "securityTrace": {"protectedMode": protected_mode, "calls": traces},
+        "securityTrace": {
+            "protectedMode": protected_mode,
+            "protectionPolicy": protection_policy,
+            "calls": traces,
+        },
     }
 
 def _summary_fields(text: str) -> dict[str, object]:
@@ -1413,11 +1520,13 @@ def summarize_document(payload: dict[str, object]) -> dict[str, object]:
         # Bound arbitrary uploads so one unusually large document cannot make
         # the hackathon demo dependent on provider context/latency limits.
         llm_source = text[:12000]
+    protection_policy = normalize_protection_policy(payload.get("protectionPolicy"))
     llm = _optional_llm(
         "Документ:\n" + llm_source + "\n\nВерни JSON с ключами topic, audience, requirements, prohibitions, rights. "
         "Значения audience, requirements, prohibitions и rights должны быть массивами коротких строк.",
         prompts["summary_system"],
         max_tokens=900,
+        protection_policy=protection_policy,
     )
     ai_fields = _parse_summary_llm(llm)
     if ai_fields:

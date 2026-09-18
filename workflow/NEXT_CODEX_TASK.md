@@ -1,27 +1,45 @@
 # Next Execution Task
 
-TASK_ID: DEMO-PROTECTED-KB-UPLOAD
+TASK_ID: DEMO-ANONYMIZATION-SETTINGS
 MODE: REVIEW
 BASE_BRANCH: main
-TARGET_BRANCH: feature/protected-demo-kb-upload
+TARGET_BRANCH: feature/anonymization-settings-ui
 EXECUTION_PATH: DIRECT
 
 ## Result
-Implementation is complete on the isolated feature branch. Do not merge into main while the current main-branch review is in progress.
+A jury-facing anonymization settings surface is implemented on an isolated feature branch. It reuses the real local protection engine rather than a visual mock.
 
 ## Acceptance status
-1. Protected-mode switch enabled by default — PASS.
-2. Policy transformation before every external LLM call and local reverse transformation — PASS.
-3. Jury trace shows provider/route, original prompt, policy mapping, transformed outbound prompt, exact provider JSON, raw provider response and restored response; API key is excluded — PASS.
-4. Seven prepared demo questions cover role disambiguation, same-role/different-department retrieval, hierarchy, protected-data handling and a not-regulated fallback — PASS.
-5. UI ingestion persists a normative file under ignored official_documents_inbox/uploaded, stores its corpus record separately and makes it queryable without restart — PASS.
-6. Existing one-off summary/upload behavior remains available — PASS.
+1. Separate «Защита данных» tab exposes per-category policy controls — PASS.
+2. ORG/SYSTEM/PROJECT/PERSON/internal IDs can be pseudonymized or explicitly allowed; email/phone can be masked or explicitly allowed — PASS.
+3. Credentials/private keys remain an immutable BLOCK boundary — PASS.
+4. Local preview visibly compares original data, exact safe outbound text and reverse-restored text without invoking an external LLM — PASS.
+5. Preview lists detected sensitive values and the action applied to each — PASS.
+6. The selected policy is sent with protected normative questions and document summaries, so the settings affect the real user-facing external-call paths — PASS.
+7. Existing protected-mode trace, normative Q&A, summaries and knowledge-base ingestion remain intact — PASS.
+
+## Context pack
+- AGENTS.md
+- workflow/STATE.md
+- workflow/NEXT_CODEX_TASK.md
+- docs/QUALITY.md security/UI sections
+- app.py protection-policy functions and normative LLM trace path
+- static/index.html
+- tests/test_app.py
+
+## Required checks
+- .venv/bin/python -m py_compile app.py
+- .venv/bin/python -m unittest tests/test_app.py
+- node --check on extracted inline UI script
+- git diff --check
+- isolated HTTP smoke for /api/analyze verifying custom policy, safe outbound and exact local restore
 
 ## Verification
-- .venv/bin/python -m unittest tests/test_app.py — 51 tests PASS.
 - .venv/bin/python -m py_compile app.py — PASS.
-- node --check on extracted UI script — PASS.
+- .venv/bin/python -m unittest tests/test_app.py — 55 tests PASS.
+- node --check on extracted inline UI script — PASS.
 - git diff --check — PASS.
-- HTTP smoke on isolated port 8011 — PASS.
-- protected outbound smoke: ORG/SYSTEM/PROJECT/email absent from provider JSON and replaced by policy tokens — PASS.
-- all seven demo questions checked against the official 5-document corpus; six return grounded evidence and one intentionally returns not-regulated — PASS.
+- isolated HTTP smoke on port 8012 — PASS.
+- preview smoke: custom ORG=ALLOW leaves organization visible, SYSTEM is pseudonymized, EMAIL is masked, reverse restore equals original — PASS.
+- real normative-question trace with the same custom policy reflects the selected actions before provider dispatch — PASS (provider intentionally unavailable in isolated smoke).
+- credential external-processing attempt returns HTTP 403 — PASS.

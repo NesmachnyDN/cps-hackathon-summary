@@ -20,6 +20,7 @@
     details{margin-top:18px;color:var(--muted)}details>div{padding:10px 2px}.trace-call{border:1px solid var(--line);border-radius:10px;padding:14px;margin:12px 0;background:#fcfdff}
     pre{white-space:pre-wrap;word-break:break-word;background:#f3f5f8;border-radius:8px;padding:10px;max-height:260px;overflow:auto;font-size:12px;color:#344054}.trace-title{font-weight:700;color:var(--ink)}
     .statusbar{display:flex;gap:8px;flex-wrap:wrap;margin:0 0 14px}.pill{font-size:13px;background:#fff;border:1px solid var(--line);border-radius:999px;padding:4px 9px;color:var(--muted)}
+    .policy-grid{display:grid;grid-template-columns:1.2fr 1.6fr 1fr;border:1px solid var(--line);border-radius:10px;overflow:hidden}.policy-grid>div{padding:10px 12px;border-bottom:1px solid var(--line);background:#fff}.policy-grid>.head{font-size:13px;font-weight:700;color:var(--muted);background:#f8fafc}.policy-grid select{padding:7px}.compare{display:grid;grid-template-columns:1fr 1fr 1fr;gap:12px}.compare .pane{border:1px solid var(--line);border-radius:10px;padding:12px;background:#fbfcfe}.compare h3{margin:0 0 8px;font-size:14px}.compare pre{margin:0;min-height:150px}.mapping{width:100%;border-collapse:collapse;margin-top:8px}.mapping th,.mapping td{text-align:left;border-bottom:1px solid var(--line);padding:8px;font-size:13px;vertical-align:top}.mapping th{color:var(--muted)}.decision{display:inline-block;border-radius:999px;padding:5px 10px;font-size:13px;font-weight:700}.decision.allow{background:#ecfdf3;color:#067647}.decision.block{background:#fef3f2;color:#b42318}@media(max-width:820px){.policy-grid{grid-template-columns:1fr}.policy-grid>.head{display:none}.compare{grid-template-columns:1fr}}
   </style>
 </head><body><main>
   <h1>Нормативный помощник</h1>
@@ -28,6 +29,7 @@
   <nav class="tabs" aria-label="Режим работы">
     <button class="tab active" data-panel="question">Спросить по ситуации</button>
     <button class="tab" data-panel="summary">Выжимка и база знаний</button>
+    <button class="tab" data-panel="privacy">Защита данных</button>
   </nav>
   <section id="question" class="active-panel">
     <div class="card">
@@ -44,7 +46,7 @@
       </select>
       <label for="questionText" style="margin-top:14px">Ситуация или вопрос</label>
       <textarea id="questionText" placeholder="Введите вопрос или выберите сценарий выше"></textarea>
-      <label class="toggle"><input id="protectedMode" type="checkbox" checked><span><b>Защищённый режим</b> — чувствительные значения преобразуются до внешней LLM, а ответ восстанавливается локально.</span></label>
+      <label class="toggle"><input id="protectedMode" type="checkbox" checked><span><b>Защищённый режим</b> — чувствительные значения преобразуются до внешней LLM, а ответ восстанавливается локально. Правила настраиваются на вкладке «Защита данных».</span></label>
       <div class="row"><button id="ask">Получить ответ</button><button class="secondary" id="loadDemo">Подставить выбранный вопрос</button></div>
     </div>    <div id="questionResult" hidden class="card">
       <span id="questionMode" class="mode"></span>
@@ -79,7 +81,44 @@
       <div class="row"><button id="kbIngest">Добавить в базу знаний</button></div>
       <div id="kbStatus"></div>
     </div>
-  </section>  <details><summary>Конфиденциальность и контроль доступа</summary>
+  </section>
+  <section id="privacy">
+    <div class="card">
+      <h2>Настройка защиты данных</h2>
+      <p class="lead">Эти правила применяются к внешним AI-вызовам ответа и выжимки. В режиме вопросов они действуют при включённой защите. Credentials блокируются всегда и не могут быть разрешены через интерфейс.</p>
+      <div class="policy-grid">
+        <div class="head">Тип данных</div><div class="head">Пример</div><div class="head">Действие</div>
+        <div><b>Организация</b><div class="meta">ORG</div></div><div>Компания СеверГаз</div><div><select data-policy="ORG"><option value="PSEUDONYMIZE">Псевдонимизировать</option><option value="ALLOW">Оставить как есть</option></select></div>
+        <div><b>Система</b><div class="meta">SYSTEM</div></div><div>ДокФлоу-X</div><div><select data-policy="SYSTEM"><option value="PSEUDONYMIZE">Псевдонимизировать</option><option value="ALLOW">Оставить как есть</option></select></div>
+        <div><b>Проект</b><div class="meta">PROJECT</div></div><div>Миграция-42</div><div><select data-policy="PROJECT"><option value="PSEUDONYMIZE">Псевдонимизировать</option><option value="ALLOW">Оставить как есть</option></select></div>
+        <div><b>Персона</b><div class="meta">PERSON</div></div><div>Анна Смирнова</div><div><select data-policy="PERSON"><option value="PSEUDONYMIZE">Псевдонимизировать</option><option value="ALLOW">Оставить как есть</option></select></div>
+        <div><b>Внутренний идентификатор</b><div class="meta">SECRET</div></div><div>INC-78421</div><div><select data-policy="SECRET"><option value="PSEUDONYMIZE">Псевдонимизировать</option><option value="ALLOW">Оставить как есть</option></select></div>
+        <div><b>Email</b><div class="meta">EMAIL</div></div><div>demo.user@example.org</div><div><select data-policy="EMAIL"><option value="MASK">Маскировать</option><option value="ALLOW">Оставить как есть</option></select></div>
+        <div><b>Телефон</b><div class="meta">PHONE</div></div><div>+7 913 555-12-34</div><div><select data-policy="PHONE"><option value="MASK">Маскировать</option><option value="ALLOW">Оставить как есть</option></select></div>
+        <div><b>Credentials / private keys</b><div class="meta">CREDENTIAL</div></div><div>password=… / Bearer …</div><div><select disabled><option>Блокировать всегда</option></select></div>
+      </div>
+    </div>
+    <div class="card">
+      <h2>Проверка преобразования до отправки</h2>
+      <p class="lead">Preview выполняется локально и не вызывает внешнюю модель.</p>
+      <label for="privacyInput">Исходные данные</label>
+      <textarea id="privacyInput">Компания СеверГаз использует систему ДокФлоу-X в проекте Миграция-42. Бизнес-владелец: Анна Смирнова. Контакт demo.user@example.org, +7 913 555-12-34. Инцидент INC-78421.</textarea>
+      <div class="row"><button id="previewPrivacy">Показать преобразование</button><button class="secondary" id="resetPrivacy">Настройки по умолчанию</button></div>
+      <div id="privacyError" class="error"></div>
+    </div>
+    <div id="privacyResult" hidden class="card">
+      <div class="row"><span id="privacyDecision" class="decision"></span><span id="privacyCounts" class="meta"></span></div>
+      <div class="compare">
+        <div class="pane"><h3>1. Исходные данные внутри контура</h3><pre id="privacyOriginal"></pre></div>
+        <div class="pane"><h3>2. Безопасные данные для внешнего AI</h3><pre id="privacyOutbound"></pre></div>
+        <div class="pane"><h3>3. Обратное восстановление локально</h3><pre id="privacyRestored"></pre></div>
+      </div>
+      <h3>Найденные чувствительные значения</h3>
+      <div id="privacyMapping"></div>
+      <p id="privacyReason" class="meta"></p>
+    </div>
+  </section>
+  <details><summary>Конфиденциальность и контроль доступа</summary>
     <div>Защищённый режим включён по умолчанию. Trace показывает исходный prompt, действия политик, точное тело запроса наружу, сырой ответ модели и локально восстановленный ответ. API-ключ в интерфейс не возвращается.</div>
   </details>
 </main>
@@ -94,13 +133,19 @@ function renderTrace(security){const root=$('trace');root.replaceChildren();cons
 function showQuestion(d){$('questionResult').hidden=false;$('questionMode').textContent=d.evidence?.length?mode(d.mode):'В документах не найдено основание';$('answer').textContent=d.answer;const c=d.conflicts||{};$('conflict').style.display=c.detected?'block':'none';$('conflict').textContent=c.detected?'Обнаружено противоречие. '+c.priorityMessage:'';$('quotes').replaceChildren(...(d.evidence||[]).map(x=>{const e=document.createElement('article');e.className='quote';const m=document.createElement('div');m.className='meta';m.textContent=x.document+' · редакция '+x.version+(x.section?' · раздел «'+x.section+'»':'')+(x.effectiveDate?' · действует с '+x.effectiveDate:'');const q=document.createElement('div');q.textContent=x.quote;e.append(m,q);return e}));renderTrace(d.securityTrace)}
 $('demoQuestion').onchange=()=>{if($('demoQuestion').value)$('questionText').value=$('demoQuestion').value};
 $('loadDemo').onclick=()=>{if($('demoQuestion').value)$('questionText').value=$('demoQuestion').value};
-$('ask').onclick=async()=>{try{showQuestion(await api('/api/normative/question',{question:$('questionText').value,protectedMode:$('protectedMode').checked}))}catch(e){alert(e.message)}};
+function currentProtectionPolicy(){const result={CREDENTIAL:'BLOCK'};document.querySelectorAll('[data-policy]').forEach(x=>result[x.dataset.policy]=x.value);return result}
+$('ask').onclick=async()=>{try{showQuestion(await api('/api/normative/question',{question:$('questionText').value,protectedMode:$('protectedMode').checked,protectionPolicy:currentProtectionPolicy()}))}catch(e){alert(e.message)}};
+function renderPrivacyMapping(items){const root=$('privacyMapping');root.replaceChildren();if(!items?.length){root.textContent='Чувствительные значения не обнаружены.';return}const table=document.createElement('table');table.className='mapping';table.innerHTML='<thead><tr><th>Тип</th><th>Исходное значение</th><th>Действие</th></tr></thead>';const body=document.createElement('tbody');items.forEach(item=>{const tr=document.createElement('tr');[item.category,item.value,item.action].forEach(value=>{const td=document.createElement('td');td.textContent=value;tr.append(td)});body.append(tr)});table.append(body);root.append(table)}
+function showPrivacyPreview(d){$('privacyResult').hidden=false;$('privacyOriginal').textContent=d.original;$('privacyOutbound').textContent=d.outbound;$('privacyRestored').textContent=d.localRestoreCheck;const decision=d.policy?.decision||'ALLOW';$('privacyDecision').textContent=decision==='ALLOW'?'Можно отправлять наружу':'Передача заблокирована';$('privacyDecision').className='decision '+(decision==='ALLOW'?'allow':'block');const c=d.policy?.counts||{};$('privacyCounts').textContent='Псевдонимизация: '+(c.PSEUDONYMIZE||0)+' · Маскирование: '+(c.MASK||0)+' · Блокировки: '+(c.BLOCK||0);$('privacyReason').textContent=d.policy?.reason||'';renderPrivacyMapping(d.detectedTerms||[])}
+$('previewPrivacy').onclick=async()=>{$('privacyError').textContent='';try{showPrivacyPreview(await api('/api/analyze',{text:$('privacyInput').value,terms:[],protectionPolicy:currentProtectionPolicy()}))}catch(e){$('privacyError').textContent=e.message}};
+$('resetPrivacy').onclick=()=>{const defaults={ORG:'PSEUDONYMIZE',SYSTEM:'PSEUDONYMIZE',PROJECT:'PSEUDONYMIZE',PERSON:'PSEUDONYMIZE',SECRET:'PSEUDONYMIZE',EMAIL:'MASK',PHONE:'MASK'};document.querySelectorAll('[data-policy]').forEach(x=>x.value=defaults[x.dataset.policy]);$('previewPrivacy').click()};
+document.querySelectorAll('[data-policy]').forEach(x=>x.onchange=()=>{if(!$('privacyResult').hidden)$('previewPrivacy').click()});
 let exportText='',corpus=[];
 function group(title,values){return '<h3>'+title+'</h3><ul>'+((values&&values.length?values:['Не указано']).map(x=>'<li>'+String(x).replaceAll('&','&amp;').replaceAll('<','&lt;')+'</li>').join(''))+'</ul>'}
 function toBase64(bytes){let binary='';for(let i=0;i<bytes.length;i+=8192)binary+=String.fromCharCode(...bytes.subarray(i,i+8192));return btoa(binary)}
 async function filePayload(file){const b=await file.arrayBuffer();return {name:file.name,contentBase64:toBase64(new Uint8Array(b))}}
 async function refreshCorpus(selectDocumentId){const data=await api('/api/corpus');corpus=data.documents||[];const sel=$('corpusSelect');while(sel.options.length>1)sel.remove(1);let selectIndex='';corpus.forEach((item,i)=>{sel.add(new Option((item.title||item.document_id)+' · редакция '+(item.version||'не указана'),String(i)));if(selectDocumentId&&item.document_id===selectDocumentId)selectIndex=String(i)});if(selectIndex)sel.value=selectIndex;$('corpusCount').textContent='Документов в базе: '+corpus.length}
-$('summarize').onclick=async()=>{const f=$('file').files[0],selected=$('corpusSelect').value;$('summaryError').textContent='';if(!f&&!selected){$('summaryError').textContent='Выберите документ из базы или загрузите файл.';return}try{let text,metadata;if(selected){const item=corpus[+selected];text=item.text;metadata=item}else{const uploaded=await api('/api/file',await filePayload(f));text=uploaded.text;metadata={document_id:f.name}}const d=await api('/api/normative/summary',{text,metadata});const s=d.summary;$('summaryResult').hidden=false;$('summaryMode').textContent=mode(d.mode);$('summarySource').textContent=d.source?.title?(d.source.title+' · редакция '+(d.source.version||'не указана')):'';$('summaryFields').innerHTML=group('Тема',[s.topic])+group('Аудитория',s.audience)+group('Требования',s.requirements)+group('Запреты',s.prohibitions)+group('Права',s.rights)+group('Изменения',s.changes_vs_previous.available?['Добавлено: '+(s.changes_vs_previous.added.join('; ')||'нет'),'Удалено: '+(s.changes_vs_previous.removed.join('; ')||'нет')]:['Предыдущая версия не найдена']);exportText=$('summaryFields').innerText}catch(e){$('summaryError').textContent=e.message}};
+$('summarize').onclick=async()=>{const f=$('file').files[0],selected=$('corpusSelect').value;$('summaryError').textContent='';if(!f&&!selected){$('summaryError').textContent='Выберите документ из базы или загрузите файл.';return}try{let text,metadata;if(selected){const item=corpus[+selected];text=item.text;metadata=item}else{const uploaded=await api('/api/file',await filePayload(f));text=uploaded.text;metadata={document_id:f.name}}const d=await api('/api/normative/summary',{text,metadata,protectionPolicy:currentProtectionPolicy()});const s=d.summary;$('summaryResult').hidden=false;$('summaryMode').textContent=mode(d.mode);$('summarySource').textContent=d.source?.title?(d.source.title+' · редакция '+(d.source.version||'не указана')):'';$('summaryFields').innerHTML=group('Тема',[s.topic])+group('Аудитория',s.audience)+group('Требования',s.requirements)+group('Запреты',s.prohibitions)+group('Права',s.rights)+group('Изменения',s.changes_vs_previous.available?['Добавлено: '+(s.changes_vs_previous.added.join('; ')||'нет'),'Удалено: '+(s.changes_vs_previous.removed.join('; ')||'нет')]:['Предыдущая версия не найдена']);exportText=$('summaryFields').innerText}catch(e){$('summaryError').textContent=e.message}};
 $('kbIngest').onclick=async()=>{const f=$('kbFile').files[0],status=$('kbStatus');status.className='';status.textContent='';if(!f){status.className='error';status.textContent='Выберите нормативный документ.';return}try{const payload=await filePayload(f);const title=$('kbTitle').value.trim();if(title)payload.metadata={title};const d=await api('/api/normative/ingest',payload);status.className='ok';status.textContent='Добавлено: '+d.document.title+'. Файл: '+d.storedAs+'. Документов в базе: '+d.corpusSize+'. Можно сразу задавать вопросы.';await refreshCorpus(d.document.document_id);$('kbFile').value='';$('kbTitle').value=''}catch(e){status.className='error';status.textContent=e.message}};
 $('download').onclick=()=>{const a=document.createElement('a');a.href=URL.createObjectURL(new Blob([exportText],{type:'text/plain;charset=utf-8'}));a.download='vyzhimka.txt';a.click();URL.revokeObjectURL(a.href)};
 refreshCorpus().catch(e=>{$('corpusCount').textContent='База недоступна';$('summaryError').textContent=e.message});

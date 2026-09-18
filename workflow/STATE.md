@@ -1,9 +1,9 @@
 # Workflow State
 
-STATUS: DEMO_HARDENING_READY
-CURRENT_TASK_ID: DEMO-PROTECTED-KB-UPLOAD
+STATUS: ANONYMIZATION_UI_READY
+CURRENT_TASK_ID: DEMO-ANONYMIZATION-SETTINGS
 CURRENT_MODE: REVIEW
-TARGET_BRANCH: feature/protected-demo-kb-upload
+TARGET_BRANCH: feature/anonymization-settings-ui
 APPROVED_BRANCH: main
 PRIMARY_REPOSITORY: NesmachnyDN/cps-hackathon-summary
 EXECUTION_MODE: LOCAL_ORCHESTRATED
@@ -20,7 +20,9 @@ MVP:
 - direct legacy DOC upload: PASS
 - Groq via local VPN proxy: PASS
 - protected demo mode + trace: PASS
+- configurable anonymization policy UI: PASS
+- local source -> safe outbound -> restored preview: PASS
 - UI knowledge-base ingestion: PASS
 - 7 prepared demo questions: PASS
 
-NEXT_ACTION: keep this slice isolated on feature/protected-demo-kb-upload until the current main-branch review is finished; merge only when explicitly desired.
+NEXT_ACTION: keep the anonymization settings slice isolated on feature/anonymization-settings-ui; merge into main only on explicit user instruction.
