@@ -533,9 +533,24 @@ def build_chat_request(
     }
 
 
+def groq_proxy_url() -> str | None:
+    explicit = os.environ.get("GROQ_PROXY_URL", "").strip()
+    if explicit.lower() in {"direct", "off", "none"}:
+        return None
+    return (
+        explicit
+        or os.environ.get("HTTPS_PROXY", "").strip()
+        or os.environ.get("https_proxy", "").strip()
+        or None
+    )
+
+
 def _provider_opener(config: ProviderConfig):
     if config.profile == "GROQ_TEMP_48H_TUN":
-        return build_opener(ProxyHandler({}))
+        proxy = groq_proxy_url()
+        if proxy:
+            return build_opener(ProxyHandler({"http": proxy, "https": proxy}))
+        return build_opener()
     return build_opener()
 
 

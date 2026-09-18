@@ -24,6 +24,7 @@ from app import (
     deterministic_sensitive_candidates,
     ensure_no_leak,
     external_provider_config,
+    groq_proxy_url,
     extract_uploaded_text,
     import_file_payload,
     load_prompts,
@@ -391,6 +392,18 @@ class PseudonymizationTests(unittest.TestCase):
     def test_invalid_pdf_is_reported_as_pdf_parse_error(self):
         with self.assertRaisesRegex(ValueError, "invalid or unsupported PDF"):
             extract_uploaded_text("scan.pdf", b"%PDF-demo")
+
+    def test_groq_proxy_prefers_explicit_setting(self):
+        env = {
+            "GROQ_PROXY_URL": "http://127.0.0.1:10809",
+            "HTTPS_PROXY": "http://fallback.example:3128",
+        }
+        with patch.dict(os.environ, env, clear=True):
+            self.assertEqual(groq_proxy_url(), "http://127.0.0.1:10809")
+
+    def test_groq_proxy_can_be_disabled_explicitly(self):
+        with patch.dict(os.environ, {"GROQ_PROXY_URL": "direct"}, clear=True):
+            self.assertIsNone(groq_proxy_url())
 
     def test_corporate_profile_uses_cps_detector_and_disables_external_groq(self):
         env = {
