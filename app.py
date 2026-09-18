@@ -6,6 +6,8 @@ import errno
 import json
 import os
 import re
+import subprocess
+import tempfile
 import zipfile
 from collections import defaultdict
 from dataclasses import dataclass
@@ -29,7 +31,7 @@ DETECTOR_CATEGORIES = {"ORG", "SYSTEM", "PROJECT", "PERSON", "SECRET"}
 MAX_REQUEST_BYTES = 3_500_000
 MAX_FILE_BYTES = 2_000_000
 MAX_EXTRACTED_CHARS = 200_000
-SUPPORTED_FILE_EXTENSIONS = {".txt", ".md", ".csv", ".json", ".docx", ".pdf"}
+SUPPORTED_FILE_EXTENSIONS = {".txt", ".md", ".csv", ".json", ".doc", ".docx", ".pdf"}
 CORPUS_PATH = Path(os.environ.get("NORMATIVE_CORPUS_PATH", str(ROOT / "demo" / "normative_corpus.json")))
 PROMPTS_PATH = Path(os.environ.get("NORMATIVE_PROMPTS_PATH", str(ROOT / "prompts.json")))
 POLICY_RULES = [
@@ -325,6 +327,41 @@ def _extract_docx_text(data: bytes) -> str:
     return "\n".join(paragraphs)
 
 
+def _extract_doc_text(data: bytes) -> str:
+    with tempfile.TemporaryDirectory(prefix="cps-doc-") as temp_dir:
+        temp = Path(temp_dir)
+        source = temp / "upload.doc"
+        output = temp / "converted"
+        profile = temp / "lo-profile"
+        source.write_bytes(data)
+        output.mkdir()
+        try:
+            subprocess.run(
+                [
+                    "soffice",
+                    f"-env:UserInstallation=file://{profile}",
+                    "--headless",
+                    "--convert-to",
+                    "docx",
+                    "--outdir",
+                    str(output),
+                    str(source),
+                ],
+                check=True,
+                stdout=subprocess.DEVNULL,
+                stderr=subprocess.DEVNULL,
+                timeout=20,
+            )
+        except FileNotFoundError as exc:
+            raise ValueError("legacy DOC support requires LibreOffice") from exc
+        except (subprocess.SubprocessError, OSError) as exc:
+            raise ValueError("invalid or unsupported DOC file") from exc
+        converted = output / "upload.docx"
+        if not converted.exists():
+            raise ValueError("invalid or unsupported DOC file")
+        return _extract_docx_text(converted.read_bytes())
+
+
 def _extract_pdf_text(data: bytes) -> str:
     """Extract PDF text locally. pypdf is optional at import time for simple launch."""
     if not data.startswith(b"%PDF-") or b"%%EOF" not in data:
@@ -344,13 +381,15 @@ def extract_uploaded_text(filename: str, data: bytes) -> dict[str, object]:
     safe_name = Path(filename or "").name
     extension = Path(safe_name).suffix.lower()
     if extension not in SUPPORTED_FILE_EXTENSIONS:
-        raise ValueError("unsupported file type; use TXT, MD, CSV, JSON, DOCX or PDF")
+        raise ValueError("unsupported file type; use TXT, MD, CSV, JSON, DOC, DOCX or PDF")
     if not data:
         raise ValueError("file is empty")
     if len(data) > MAX_FILE_BYTES:
         raise ValueError("file is too large")
 
-    if extension == ".docx":
+    if extension == ".doc":
+        text = _extract_doc_text(data)
+    elif extension == ".docx":
         text = _extract_docx_text(data)
     elif extension == ".pdf":
         text = _extract_pdf_text(data)
@@ -519,6 +558,7 @@ def build_chat_request(
     user_text: str,
     model: str | None = None,
     system_prompt: str = PROCESSOR_SYSTEM_PROMPT,
+    max_tokens: int = 240,
 ) -> dict[str, object]:
     resolved_model = model or active_detector_config().model or "openai/gpt-oss-120b"
     return {
@@ -529,7 +569,7 @@ def build_chat_request(
         ],
         "stream": False,
         # Bound generation for predictable hackathon latency; prompts request concise answers.
-        "max_tokens": 240,
+        "max_tokens": max_tokens,
     }
 
 
@@ -571,6 +611,7 @@ def call_provider(
     timeout: int = PROVIDER_TIMEOUT_SECONDS,
     opener=None,
     system_prompt: str = PROCESSOR_SYSTEM_PROMPT,
+    max_tokens: int = 240,
 ) -> str:
     config = config or active_detector_config()
     if not config.configured:
@@ -579,7 +620,13 @@ def call_provider(
     if not chat_url:
         raise ProviderError("Provider endpoint is not configured")
 
-    payload = build_chat_request(user_text, config.model, system_prompt)
+    payload = build_chat_request(user_text, config.model, system_prompt, max_tokens=max_tokens)
+    if config.profile == "GROQ_TEMP_48H_TUN":
+        payload["max_completion_tokens"] = payload.pop("max_tokens")
+        if config.model in {"openai/gpt-oss-120b", "openai/gpt-oss-20b"}:
+            # Keep document summaries responsive and reserve completion budget for
+            # visible content instead of spending it all on hidden reasoning.
+            payload["reasoning_effort"] = "low"
     body = json.dumps(payload, ensure_ascii=False).encode("utf-8")
     headers = {
         "Content-Type": "application/json",
@@ -838,28 +885,115 @@ def _current_documents(corpus: list[dict[str, object]]) -> list[dict[str, object
 def _clauses(item: dict[str, object]) -> list[str]:
     raw = item.get("clauses")
     if isinstance(raw, list):
-        return [str(x).strip() for x in raw if str(x).strip()]
+        result: list[str] = []
+        for entry in raw:
+            quote = entry.get("quote") if isinstance(entry, dict) else entry
+            if str(quote or "").strip():
+                result.append(str(quote).strip())
+        return result
     return [line.strip() for line in str(item.get("text", "")).splitlines() if line.strip()]
+
+
+def _search_tokens(text: str) -> set[str]:
+    # Lightweight Russian morphology tolerance: leading stems make common case
+    # changes such as "ведущий/ведущего" and "главный/главного" comparable.
+    return {word[:5] if len(word) >= 6 else word for word in _tokens(text)}
+
+
+def _clause_entries(item: dict[str, object]) -> list[dict[str, str]]:
+    raw = item.get("clauses")
+    if isinstance(raw, list):
+        result: list[dict[str, str]] = []
+        for entry in raw:
+            if isinstance(entry, dict):
+                quote = str(entry.get("quote", "")).strip()
+                if quote:
+                    result.append({
+                        "quote": quote,
+                        "searchText": str(entry.get("search_text") or quote),
+                        "section": str(entry.get("section") or ""),
+                    })
+            elif str(entry).strip():
+                result.append({"quote": str(entry).strip(), "searchText": str(entry).strip(), "section": ""})
+        return result
+    return [{"quote": line, "searchText": line, "section": ""} for line in _clauses(item)]
+
+
+def _query_with_intent(question: str) -> str:
+    additions: list[str] = []
+    lowered = question.lower()
+    if re.search(r"\b(?:делает|занимается|функции|задачи)\b", lowered):
+        additions.append("должностные обязанности")
+    if re.search(r"\b(?:отвечает|ответственност\w*)\b", lowered):
+        additions.append("ответственность")
+    return question + (" " + " ".join(additions) if additions else "")
 
 
 def retrieve_clauses(question: str, corpus: list[dict[str, object]] | None = None, limit: int = 5) -> dict[str, object]:
     if not question.strip():
         raise ValueError("question must not be empty")
     corpus = corpus if corpus is not None else load_corpus()
-    query_words = _tokens(question)
-    scored: list[tuple[int, dict[str, object], str]] = []
+    query_exact = _tokens(question)
+    query_stems = _search_tokens(question)
+    section_query_stems = _search_tokens(_query_with_intent(question))
+    scored: list[tuple[int, int, dict[str, object], dict[str, str], int, int, int]] = []
+    candidates: list[tuple[dict[str, object], set[str], set[str], set[str], int, int, int, int]] = []
     for item in _current_documents(corpus):
-        for clause in _clauses(item):
-            words = _tokens(clause)
-            score = len(query_words & words)
+        position_stems = _search_tokens(str(item.get("position", "")))
+        department_stems = _search_tokens(str(item.get("department", "")))
+        id_stems = _search_tokens(str(item.get("document_id", "")))
+        position_matches = len(query_stems & position_stems)
+        department_matches = len(query_stems & department_stems)
+        id_matches = len(query_stems & id_stems)
+        affinity = position_matches * 5 + department_matches + id_matches * 3
+        candidates.append((item, position_stems, department_stems, id_stems,
+                           position_matches, department_matches, id_matches, affinity))
+
+    identifiable = [
+        row for row in candidates
+        if row[4] >= 1 or row[6] >= 1 or row[5] >= 2
+    ]
+    if identifiable:
+        best_affinity = max(row[7] for row in identifiable)
+        candidates = [row for row in identifiable if row[7] == best_affinity]
+
+    for item, position_stems, department_stems, id_stems, position_matches, department_matches, id_matches, _ in candidates:
+        metadata_stems = position_stems | department_stems | id_stems
+        metadata_matches = position_matches + department_matches + id_matches
+        focus_stems = query_stems - metadata_stems
+        focus_exact = {
+            word for word in query_exact
+            if _search_tokens(word) & focus_stems
+        }
+        for index, entry in enumerate(_clause_entries(item)):
+            quote_exact = _tokens(entry["quote"])
+            quote_stems = _search_tokens(entry["quote"])
+            section_stems = _search_tokens(entry.get("section", ""))
+            exact_matches = len(query_exact & quote_exact)
+            content_matches = len(query_stems & quote_stems)
+            section_matches = len(section_query_stems & section_stems)
+            focus_matches = len(focus_stems & quote_stems)
+            focus_exact_matches = len(focus_exact & quote_exact)
+            score = (
+                exact_matches
+                + content_matches * 2
+                + focus_matches * 8
+                + focus_exact_matches * 12
+                + section_matches * 12
+                + position_matches * 5
+                + department_matches
+                + id_matches * 3
+            )
             if score:
-                scored.append((score, item, clause))
-    scored.sort(key=lambda row: (-row[0], str(row[1].get("title")), row[2]))
+                scored.append((score, index, item, entry, content_matches, metadata_matches, section_matches))
+    scored.sort(key=lambda row: (-row[0], str(row[2].get("title")), row[1]))
     results = [
-        {"quote": clause, "score": score, "document": item["title"], "version": item.get("version", "не указана"),
+        {"quote": entry["quote"], "score": score, "document": item["title"], "version": item.get("version", "не указана"),
          "effectiveDate": item.get("effective_date"), "priority": item.get("priority"),
-         "priorityRank": item.get("priority_rank"), "documentId": item.get("document_id")}
-        for score, item, clause in scored[:limit]
+         "priorityRank": item.get("priority_rank"), "documentId": item.get("document_id"),
+         "section": entry.get("section") or None, "sourceFile": item.get("source_file"),
+         "contentMatches": content_matches, "metadataMatches": metadata_matches, "sectionMatches": section_matches}
+        for score, _, item, entry, content_matches, metadata_matches, section_matches in scored[:limit]
     ]
     return {"results": results, "retrieval": "offline_deterministic"}
 
@@ -909,7 +1043,7 @@ def detect_conflicts(results: list[dict[str, object]]) -> dict[str, object]:
     }
 
 
-def _optional_llm(prompt: str, system: str) -> str | None:
+def _optional_llm(prompt: str, system: str, max_tokens: int = 240) -> str | None:
     config = active_detector_config()
     if not config.configured:
         return None
@@ -917,7 +1051,16 @@ def _optional_llm(prompt: str, system: str) -> str | None:
     if not policy["allowed"]:
         return None
     try:
-        return restore(call_provider(outbound, config=config, timeout=provider_timeout_seconds(config), system_prompt=system), mapping)
+        return restore(
+            call_provider(
+                outbound,
+                config=config,
+                timeout=provider_timeout_seconds(config),
+                system_prompt=system,
+                max_tokens=max_tokens,
+            ),
+            mapping,
+        )
     except ProviderError:
         return None
 
@@ -930,17 +1073,25 @@ def answer_normative_question(payload: dict[str, object]) -> dict[str, object]:
 
     # Agentic-lite retrieval: use the fast local search first and invoke semantic
     # expansion only when lexical evidence is weak. This keeps the demo responsive.
+    def is_strong(items: list[dict[str, object]]) -> bool:
+        if not items:
+            return False
+        top = items[0]
+        content = int(top.get("contentMatches", 0))
+        metadata = int(top.get("metadataMatches", 0))
+        section = int(top.get("sectionMatches", 0))
+        return content >= 2 or (content >= 1 and metadata >= 1) or (metadata >= 2 and section >= 1)
+
     found = retrieve_clauses(question)
     results = found["results"]
-    required_score = 1 if len(_tokens(question)) <= 2 else 2
-    strong = bool(results and int(results[0].get("score", 0)) >= required_score)
+    strong = is_strong(results)
     expanded = None
     if not strong:
         expanded = _optional_llm(question, prompts["expansion_system"])
         if expanded:
             found = retrieve_clauses(question + " " + expanded)
             results = found["results"]
-            strong = bool(results and int(results[0].get("score", 0)) >= required_score)
+            strong = is_strong(results)
 
     if not strong:
         return {
@@ -980,6 +1131,42 @@ def _summary_fields(text: str) -> dict[str, object]:
             "rights": choose([r"вправе", r"имеет право", r"может"])}
 
 
+def _parse_summary_llm(content: str | None) -> dict[str, object] | None:
+    if not content or not content.strip():
+        return None
+    raw = content.strip()
+    fence = chr(96) * 3
+    if raw.startswith(fence):
+        lines = raw.splitlines()
+        if lines:
+            lines = lines[1:]
+        if lines and lines[-1].strip().startswith(fence):
+            lines = lines[:-1]
+        raw = "\n".join(lines).strip()
+    start, end = raw.find("{"), raw.rfind("}")
+    if start < 0 or end < start:
+        return None
+    try:
+        data = json.loads(raw[start : end + 1])
+    except json.JSONDecodeError:
+        return None
+    if not isinstance(data, dict):
+        return None
+
+    result: dict[str, object] = {}
+    topic = data.get("topic")
+    if isinstance(topic, str) and topic.strip():
+        result["topic"] = topic.strip()[:500]
+    for key in ("audience", "requirements", "prohibitions", "rights"):
+        value = data.get(key)
+        if not isinstance(value, list):
+            continue
+        cleaned = [str(item).strip()[:1000] for item in value if str(item).strip()]
+        if cleaned:
+            result[key] = cleaned[:8]
+    return result or None
+
+
 def summarize_document(payload: dict[str, object]) -> dict[str, object]:
     text = str(payload.get("text", "")).strip()
     if not text:
@@ -1002,6 +1189,37 @@ def summarize_document(payload: dict[str, object]) -> dict[str, object]:
     if matched:
         meta = matched
 
+    if meta.get("title"):
+        current["topic"] = str(meta["title"])
+    if meta.get("position"):
+        audience = str(meta["position"])
+        if meta.get("department"):
+            audience += " — " + str(meta["department"])
+        current["audience"] = [audience]
+
+    if matched:
+        entries = _clause_entries(matched)
+        duties = [
+            entry["quote"] for entry in entries
+            if entry.get("section", "").lower() == "должностные обязанности"
+            and not entry["quote"].lower().endswith("обязан:")
+        ]
+        rights = [
+            entry["quote"] for entry in entries
+            if entry.get("section", "").lower() == "права"
+            and "имеет право:" not in entry["quote"].lower()
+        ]
+        prohibitions = [
+            entry["quote"] for entry in entries
+            if re.search(r"\b(?:запрещ\w*|не\s+совершать|не\s+допуска\w*)", entry["quote"], re.I)
+        ]
+        if duties:
+            current["requirements"] = duties[:5]
+        if rights:
+            current["rights"] = rights[:5]
+        if prohibitions:
+            current["prohibitions"] = prohibitions[:5]
+
     if not previous_text and meta.get("document_id"):
         versions = [x for x in corpus if str(x.get("document_id")) == str(meta["document_id"]) and str(x.get("text")) != text]
         older = [x for x in versions if str(x.get("effective_date", "")) < str(meta.get("effective_date", "9999-99-99"))]
@@ -1011,9 +1229,32 @@ def summarize_document(payload: dict[str, object]) -> dict[str, object]:
     new_lines = set(_clauses({"text": text}))
     current["changes_vs_previous"] = {"added": sorted(new_lines - old_lines), "removed": sorted(old_lines - new_lines), "available": bool(previous_text)}
     prompts = load_prompts()
-    llm = _optional_llm("Документ:\n" + text + "\n\nВерни JSON с ключами topic, audience, requirements, prohibitions, rights.", prompts["summary_system"])
-    # Deterministic structure is authoritative; model output is advisory text only.
-    return {"summary": current, "narrative": llm, "mode": "llm_grounded" if llm else "offline_fallback"}
+    llm = _optional_llm(
+        "Документ:\n" + text + "\n\nВерни JSON с ключами topic, audience, requirements, prohibitions, rights. "
+        "Значения audience, requirements, prohibitions и rights должны быть массивами коротких строк.",
+        prompts["summary_system"],
+        max_tokens=1200,
+    )
+    ai_fields = _parse_summary_llm(llm)
+    if ai_fields:
+        # AI improves the human-readable structure, while version comparison and
+        # source binding remain deterministic and cannot be overwritten.
+        for key in ("topic", "audience", "requirements", "prohibitions", "rights"):
+            if key in ai_fields:
+                current[key] = ai_fields[key]
+
+    source = {
+        "documentId": meta.get("document_id"),
+        "title": meta.get("title"),
+        "version": meta.get("version"),
+        "sourceFile": meta.get("source_file"),
+    }
+    return {
+        "summary": current,
+        "narrative": llm,
+        "source": source,
+        "mode": "llm_grounded" if ai_fields else "offline_fallback",
+    }
 
 
 class Handler(BaseHTTPRequestHandler):

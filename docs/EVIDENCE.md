@@ -3,29 +3,23 @@
 Date: 2026-09-18
 
 ## Automated
-- `.venv/bin/python -m unittest discover -s tests -p 'test_*.py'` — PASS, 41 tests.
-- `.venv/bin/python -m py_compile app.py` — PASS.
+- `.venv/bin/python -m unittest discover -s tests -p 'test_*.py'` — PASS, 45 tests.
+- `.venv/bin/python -m py_compile app.py scripts/prepare_official_documents.py` — PASS.
+- `git diff --check` — PASS.
 
-## Runtime — deterministic fallback
-- GET `/` — HTTP 200; both primary modes and «Скачать выжимку» present.
-- Situational conflict query — 3 evidence fragments, conflict detected, winner = synthetic information-security standard.
-- No-answer query — zero evidence; exact honest HR fallback returned.
-- Summary of current remote-work document — previous version found; added/removed changes returned.
-- DOCX upload through `/api/file` — PASS, extracted text returned.
+## Organizer package
+- 5 legacy Word `.doc` files received and copied to local-only `official_documents_inbox/original/`.
+- All 5 converted locally to DOCX and extracted successfully.
+- Generated `official_documents_inbox/official_corpus.json` with 5 distinct current job instructions.
+- Documents are treated as separate instructions, not fabricated versions of one document.
+- No previous revisions were supplied, so version-diff is explicitly unavailable.
 
-## Runtime — real LLM
-OpenAI-compatible local Ollama endpoint `llama3.1:8b` was used as a live CPS-style provider.
-- direct OpenAI-compatible call — PASS;
-- integrated `/api/normative/question` — PASS;
-- response mode = `llm_grounded`;
-- conflict = true;
-- explicit winner = information-security standard;
-- answer generated from provided evidence and priority context.
+## Runtime — official corpus
+- Groq proxy preflight — PASS through `127.0.0.1:10809`.
+- Leading specialist query — `llm_grounded`, source ДИ-11-992, required experience = 1 year.
+- Chief specialist query — `llm_grounded`, source ДИ-11-993, required experience = 5 years.
+- Weekend business-trip payment query — no grounded evidence; honest HR fallback.
+- Original organizer `.doc` upload — PASS.
+- Structured summary for ДИ-11-992 — correct topic/audience; previous version explicitly unavailable.
 
-The current shell had no `GROQ_API_KEY`; public Groq was therefore not claimed as tested. Default no-key demo remains fully operable through the explicit offline fallback.
-
-## Docker clean runtime
-- `docker build -t cps-hackathon-summary:demo .` — PASS.
-- container published on host port 18082 — GET `/` HTTP 200.
-- UI marker present — PASS.
-- no-answer API inside container returns HR-partner fallback — PASS.
+Final post-change Groq summary smoke requires one launcher restart because the running process retains the previously entered API key.

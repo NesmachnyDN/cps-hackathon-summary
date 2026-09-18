@@ -1,31 +1,17 @@
 # Final Report — Hackathon MVP
 
-## What the task requires
-Two linked capabilities: priority situational Q&A over current normative documents with evidence/conflict handling, plus a structured document summary with version comparison and downloadable result.
+## Implemented
+The MVP answers situational questions over the organizer's official document package, shows verbatim evidence and source metadata, refuses unsupported answers, and creates downloadable structured summaries.
 
-## What is implemented
-- configurable normative corpus with current-version selection;
-- deterministic evidence retrieval and adaptive AI query expansion when lexical evidence is weak;
-- grounded LLM explanation over retrieved evidence;
-- explicit no-answer behavior;
-- conflict detection and priority selection only from explicit numeric metadata;
-- TXT/MD/CSV/JSON/DOCX/PDF intake;
-- structured summary and previous-version diff;
-- mandatory summary download;
-- external editable `prompts.json`;
-- secondary privacy policy layer reused from Secure AI Gateway;
-- explicit offline fallback;
-- Dockerfile and clean-run README;
-- synthetic demo corpus and two stable demo scenarios.
+## Organizer data integration
+The received package contains five separate job instructions in legacy `.doc` format. They are stored locally only, converted to DOCX, parsed, and indexed into `official_documents_inbox/official_corpus.json`. The package includes instructions for a brand/communications lead, recruiting lead, department head, leading specialist and chief specialist.
 
-## Reused work
-From the previously validated Secure AI Gateway: local Python server, browser UI delivery pattern, file intake, pseudonymization/masking/block policy, OpenAI-compatible provider boundary, CPS/Groq runtime profiles and related regression tests.
+The system does not invent version relationships: no previous revisions were supplied, so change comparison is marked unavailable.
 
-## Deliberately out of scope
-Production RBAC/SSO, vector database, microservices, OCR, graph visualization and tone-map bonus.
-
-## External dependency still missing
-The organizers' official 10–15 document dataset was not included with the assignment file available during this implementation. The repository therefore ships an explicitly synthetic corpus. Replace it through `NORMATIVE_CORPUS_PATH` when the official corpus arrives.
+## Retrieval and AI
+Retrieval is role/department-aware to avoid mixing highly similar HR instructions. Groq GPT-OSS 120B is used only after source retrieval, through the local VPN proxy, and is instructed to answer from retrieved clauses only. Unsupported questions return an explicit no-regulation response.
 
 ## Verification
-41 unit tests PASS; compile PASS; runtime happy paths PASS; DOCX upload PASS; real OpenAI-compatible LLM call PASS through local Ollama; public Groq not tested because no key was present in the runtime shell.
+45 unit tests pass. Legacy DOC extraction passes. Live Groq Q&A on the official corpus passes: ДИ-11-992 yields one year of experience for the leading specialist; ДИ-11-993 yields five years for the chief specialist.
+
+Official documents and the generated local corpus are excluded from Git. Only integration code, tests, documentation and launch tooling are committed.

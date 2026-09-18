@@ -190,6 +190,8 @@ class PseudonymizationTests(unittest.TestCase):
         self.assertNotIn("СеверГаз", serialized)
         self.assertEqual(request["model"], "openai/gpt-oss-120b")
         self.assertFalse(request["stream"])
+        self.assertEqual(request["max_tokens"], 240)
+        self.assertEqual(build_chat_request("x", max_tokens=1200)["max_tokens"], 1200)
 
     def test_analyze_payload_returns_local_restore_check(self):
         payload = analyze_payload(
@@ -222,15 +224,19 @@ class PseudonymizationTests(unittest.TestCase):
         config = ProviderConfig(
             profile="GROQ_TEMP_48H_TUN",
             base_url="https://example.test/v1",
-            model="demo-model",
+            model="openai/gpt-oss-120b",
             api_key="test-key",
             network="SYSTEM_TUNNEL",
         )
         result = call_provider("Риски для [[ORG_001]]", config=config, opener=opener, timeout=7)
         body = opener.request.data.decode("utf-8")
+        payload = json.loads(body)
         self.assertEqual(result, "Ответ [[ORG_001]]")
         self.assertIn("[[ORG_001]]", body)
         self.assertNotIn("СеверГаз", body)
+        self.assertEqual(payload["max_completion_tokens"], 240)
+        self.assertEqual(payload["reasoning_effort"], "low")
+        self.assertNotIn("max_tokens", payload)
         self.assertEqual(opener.timeout, 7)
         self.assertEqual(opener.request.get_header("Authorization"), "Bearer test-key")
         self.assertEqual(opener.request.get_header("User-agent"), "SecureLLMGateway/0.1")
@@ -507,6 +513,41 @@ class NormativeMvpTests(unittest.TestCase):
         self.assertEqual(len(result["results"]), 1)
         self.assertEqual(result["results"][0]["version"], "2")
 
+    def test_retrieval_distinguishes_similar_roles_with_inflection(self):
+        corpus = [
+            {
+                "document_id": "lead",
+                "title": "ДИ — Ведущий специалист",
+                "version": "2025",
+                "status": "current",
+                "position": "Ведущий специалист",
+                "department": "Подбор персонала",
+                "clauses": [{
+                    "quote": "На должность ведущего специалиста назначается лицо со стажем не менее 1 года.",
+                    "search_text": "Ведущий специалист Подбор персонала Общие положения На должность ведущего специалиста назначается лицо со стажем не менее 1 года.",
+                    "section": "Общие положения",
+                }],
+                "text": "На должность ведущего специалиста назначается лицо со стажем не менее 1 года.",
+            },
+            {
+                "document_id": "chief",
+                "title": "ДИ — Главный специалист",
+                "version": "2025",
+                "status": "current",
+                "position": "Главный специалист",
+                "department": "Подбор персонала",
+                "clauses": [{
+                    "quote": "На должность главного специалиста назначается лицо со стажем не менее 5 лет.",
+                    "search_text": "Главный специалист Подбор персонала Общие положения На должность главного специалиста назначается лицо со стажем не менее 5 лет.",
+                    "section": "Общие положения",
+                }],
+                "text": "На должность главного специалиста назначается лицо со стажем не менее 5 лет.",
+            },
+        ]
+        result = retrieve_clauses("Какой стаж нужен ведущему специалисту?", corpus)
+        self.assertEqual(result["results"][0]["documentId"], "lead")
+        self.assertIn("1 года", result["results"][0]["quote"])
+
     def test_conflict_reports_numeric_priority_winner(self):
         results = [
             {"quote": "Удалённая работа запрещена.", "documentId": "a", "version": "1", "priority": "уровень 1", "priorityRank": 1, "document": "ИБ"},
@@ -554,6 +595,22 @@ class NormativeMvpTests(unittest.TestCase):
         self.assertIn("Работник обязан", summary["requirements"][0])
         self.assertTrue(summary["changes_vs_previous"]["available"])
         self.assertIn("Работник вправе выбрать дату.", summary["changes_vs_previous"]["added"])
+
+    def test_summary_uses_valid_grounded_ai_structure(self):
+        ai = json.dumps({
+            "topic": "Правила отпуска",
+            "audience": ["Работники"],
+            "requirements": ["Согласовать отпуск"],
+            "prohibitions": ["Нет"],
+            "rights": ["Выбрать дату"],
+        }, ensure_ascii=False)
+        with patch("app._optional_llm", return_value=ai):
+            result = summarize_document({
+                "text": "Положение\nРаботник обязан согласовать отпуск.\nРаботник вправе выбрать дату."
+            })
+        self.assertEqual(result["mode"], "llm_grounded")
+        self.assertEqual(result["summary"]["topic"], "Правила отпуска")
+        self.assertEqual(result["summary"]["requirements"], ["Согласовать отпуск"])
 
     def test_uploaded_demo_document_auto_binds_to_previous_version(self):
         text = Path("demo/remote-work-v2.txt").read_text(encoding="utf-8")

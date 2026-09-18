@@ -1,29 +1,22 @@
 # Demo / Submission Runbook
 
-## Scenario 1 — situational conflict
-1. Open the app.
+## Scenario 1 — grounded question over organizer documents
+1. Open the app on `http://127.0.0.1:8001`.
 2. Stay on «Спросить по ситуации».
-3. Click «Показать пример конфликта».
-4. Show:
-   - plain-language answer;
-   - conflict banner;
-   - winning higher-priority source;
-   - exact quotes, versions and effective dates.
+3. Click «Показать пример по документам».
+4. Show the answer for the leading specialist role.
+5. Show exact source ДИ-11-992, revision period and verbatim clause.
 
-Expected business point: the assistant does not merely summarize — it finds the applicable norm and makes contradictions visible.
+Then ask: «Какой стаж работы требуется для главного специалиста отдела подбора и адаптации персонала?»
+Expected source: ДИ-11-993. This demonstrates that similar instructions are not mixed.
 
-## Scenario 2 — new document + changes
+## Scenario 2 — structured summary
 1. Open «Выжимка документа».
-2. Upload `demo/remote-work-v2.txt`.
+2. Select any instruction from the organizer package or upload its original `.doc`.
 3. Click «Сделать выжимку».
-4. Show topic/audience/requirements/prohibitions/rights.
-5. Show added/removed items vs version 1.0.
-6. Click «Скачать выжимку».
+4. Show topic, audience, requirements, prohibitions and rights.
+5. Show that no previous revision is claimed when none was supplied.
+6. Download the summary.
 
-## Stable fallback
-If the configured LLM is unavailable, keep the demo running. The UI explicitly labels the deterministic mode and continues to show source evidence, conflict, version and diff. Do not present fallback output as an LLM response.
-
-## 5-minute pitch emphasis
-- Employee asks in their own words; the assistant maps the situation back to the governing norm.
-- Evidence + version + conflict handling reduce hallucination risk and make the answer verifiable.
-- HR gains fewer repetitive consultations; security/privacy controls remain behind the business flow rather than dominating it.
+## Safety / fallback
+A question unsupported by the package must be answered as not regulated rather than from model memory. If Groq is unavailable, the grounded deterministic path remains available and is labeled explicitly.

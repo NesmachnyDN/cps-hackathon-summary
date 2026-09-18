@@ -1,8 +1,8 @@
 # Workflow State
 
-STATUS: FINALIZED
-CURRENT_TASK_ID: NONE
-CURRENT_MODE: NONE
+STATUS: OFFICIAL_CORPUS_INTEGRATED
+CURRENT_TASK_ID: OFFICIAL-DOC-INTEGRATION
+CURRENT_MODE: FINALIZE
 TARGET_BRANCH: main
 APPROVED_BRANCH: main
 PRIMARY_REPOSITORY: NesmachnyDN/cps-hackathon-summary
@@ -11,12 +11,14 @@ PARTICIPATION_MODE: SOLO
 CURRENT_PHASE: DEMO_READY
 
 MVP:
-- Task A situational normative assistant: COMPLETE
-- Task B structured summary + version diff: COMPLETE
-- UI/download: COMPLETE
-- editable prompts: COMPLETE
-- privacy fallback layer: COMPLETE
-- unit/runtime acceptance: PASS
-- official organizer corpus: NOT_RECEIVED
+- organizer package received: 5 DOC files
+- local-only originals + converted DOCX: READY
+- generated official corpus: READY
+- situational assistant on official corpus: PASS
+- role/department disambiguation: PASS
+- structured summary: PASS
+- direct legacy DOC upload: PASS
+- Groq via local VPN proxy: PASS
+- final post-change summary AI smoke: PENDING_RESTART
 
-NEXT_ACTION: Replace synthetic corpus with official organizer dataset when supplied; otherwise no product-code changes before demo.
+NEXT_ACTION: restart via scripts/run_groq_proxy.sh, run final two-scenario smoke, then freeze demo build.

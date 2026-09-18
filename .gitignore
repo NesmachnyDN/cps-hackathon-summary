@@ -44,4 +44,7 @@ target/
 *.sqlite3
 *.db
 
+# Official hackathon documents are local-only and must never be pushed
+/official_documents_inbox/
+
 # Generated presentation exports may be kept intentionally only when required

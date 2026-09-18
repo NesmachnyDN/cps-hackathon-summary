@@ -1,14 +1,16 @@
 # Plan / Status
 
-STATUS: MVP_COMPLETE
+STATUS: OFFICIAL_CORPUS_INTEGRATED
 
 1. Reuse proven Secure AI Gateway intake/privacy/provider layer — DONE.
-2. Add normative corpus, current-version selection and evidence retrieval — DONE.
-3. Add conflict detection with explicit priority metadata — DONE.
-4. Add structured summary + previous-version diff — DONE.
-5. Add management-oriented two-mode UI + download — DONE.
-6. Add PDF support, prompts.json, Dockerfile and README — DONE.
-7. Unit + runtime + real LLM smoke — DONE.
-8. Replace synthetic corpus with official dataset when organizers provide it — PENDING_EXTERNAL_INPUT.
+2. Add normative corpus, source-grounded retrieval and honest no-answer behavior — DONE.
+3. Add role/department-aware ranking for highly similar job descriptions — DONE.
+4. Add structured summary + previous-version handling — DONE.
+5. Add management-oriented UI + download — DONE.
+6. Add DOC/DOCX/PDF intake and official-package preparation script — DONE.
+7. Route Groq through local VPN proxy and tune GPT-OSS reasoning budget — DONE.
+8. Integrate organizer document package — DONE.
+9. Unit + local runtime acceptance on organizer package — DONE.
+10. Final live Groq summary smoke after launcher restart — PENDING_RUNTIME_RESTART.
 
-No further product expansion is planned before the official corpus is available.
+Official documents remain local-only under `official_documents_inbox/` and are excluded from Git.
